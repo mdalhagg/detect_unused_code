@@ -1,0 +1,17 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "detect_unused_code",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "2.17"
+    }
+  ],
+  "generated": "2026-09-20T22:50:12.421720Z",
+  "generator": "pub",
+  "generatorVersion": "3.6.2",
+  "flutterRoot": "file:///G:/MohammedFlutterSDK/flutter_3.27.4",
+  "flutterVersion": "3.27.4",
+  "pubCache": "file:///C:/Users/dev74.THARWAT/AppData/Local/Pub/Cache"
+}

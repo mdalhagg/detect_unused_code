@@ -1,0 +1,20 @@
+name: detect_unused_code
+description: A fast, zero-dependency Dart and Flutter dead code detector. Finds unused classes, widgets, mixins, enums, commented-out files, and dead code blocks.
+version: 1.0.0
+homepage: https://github.com/mdalhagg/detect_unused_code
+repository: https://github.com/mdalhagg/detect_unused_code
+issue_tracker: https://github.com/mdalhagg/detect_unused_code/issues
+
+environment:
+  sdk: '>=2.17.0 <4.0.0'
+
+executables:
+  detect_unused_code: detect_unused_code
+  detect_unused: detect_unused_code
+
+topics:
+  - unused-code
+  - dead-code
+  - flutter
+  - analyzer
+  - code-quality
