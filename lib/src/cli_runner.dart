@@ -16,7 +16,28 @@ class CliRunner {
       return 0;
     }
 
-    final isJson = args.contains('--json');
+    bool isJson = false;
+    String jsonFileName = 'detect_unused_code.json';
+
+    for (int i = 0; i < args.length; i++) {
+      final a = args[i];
+      if (a == '--json') {
+        isJson = true;
+        if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+          final next = args[i + 1].trim();
+          if (next.endsWith('.json')) {
+            jsonFileName = next;
+          }
+        }
+      } else if (a.startsWith('--json=')) {
+        isJson = true;
+        final val = a.substring('--json='.length).trim();
+        if (val.isNotEmpty) {
+          jsonFileName = val.endsWith('.json') ? val : '$val.json';
+        }
+      }
+    }
+
     final onlyUnusedClasses = args.contains('--unused-classes') || args.contains('--classes');
     final onlyCommented = args.contains('--commented') ||
         args.contains('--commented-code') ||
@@ -57,7 +78,6 @@ class CliRunner {
     );
 
     void updateProgress(int percent, String label) {
-      if (isJson) return;
       final clamped = percent.clamp(0, 100);
       const barWidth = 28;
       final filled = ((clamped / 100) * barWidth).round();
@@ -68,15 +88,27 @@ class CliRunner {
     }
 
     final report = auditor.run(onProgress: updateProgress);
-
-    if (!isJson) {
-      stdout.writeln('\n');
-    }
+    stdout.writeln('\n');
 
     if (isJson) {
-      print(const JsonEncoder.withIndent('  ').convert(
-        report.toJson(includeInternal: includeInternal),
-      ));
+      final jsonMap = report.toJson(includeInternal: includeInternal);
+      final jsonString = const JsonEncoder.withIndent('  ').convert(jsonMap);
+
+      final outputFile = File('${Directory.current.path}/$jsonFileName');
+      outputFile.writeAsStringSync(jsonString);
+
+      print('================================================================================');
+      print('✅ JSON Audit Report generated successfully!');
+      print('📁 File Saved: [${outputFile.path}]');
+      print('📄 Dart Files Scanned:       ${report.totalTargetDartFiles}');
+      print('💀 Dead Classes Found:       ${report.deadClasses.length}');
+      if (includeInternal) {
+        print('⚠️ Internal-only Classes:    ${report.internalOnlyClasses.length}');
+      }
+      print('🚫 Fully Commented Files:    ${report.fullyCommentedFiles.length}');
+      print('📦 Files with Dead Blocks:   ${report.filesWithCommentBlocks.length}');
+      print('================================================================================\n');
+
       return (report.deadClasses.isNotEmpty || report.fullyCommentedFiles.isNotEmpty) ? 1 : 0;
     }
 
@@ -231,7 +263,10 @@ class CliRunner {
     for (int i = 0; i < args.length; i++) {
       final a = args[i];
       if (a.startsWith('--')) continue;
-      if (i > 0 && (args[i - 1] == '--threshold' || args[i - 1] == '--min-lines')) continue;
+      if (i > 0 &&
+          (args[i - 1] == '--threshold' ||
+              args[i - 1] == '--min-lines' ||
+              args[i - 1] == '--json')) continue;
       return cleanInputPath(a);
     }
     return null;
@@ -283,8 +318,9 @@ FILTERING & TUNING:
                            Default: 15 lines.
 
 OUTPUT FORMATS:
-  --json                   Output the full report as structured JSON for CI/CD pipelines
-                           or programmatic consumption.
+  --json [filename]        Save the complete audit report as a .json file in the current
+                           working directory (default: detect_unused_code.json) instead of
+                           dumping the raw report to the terminal.
 
   --verbose, -v            Show extended details, including code snippets of detected
                            commented blocks.
