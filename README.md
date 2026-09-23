@@ -177,8 +177,11 @@ detect_unused --threshold 75
 # Set minimum lines for commented code blocks
 detect_unused --min-lines 20
 
-# Output JSON for CI/CD pipelines
+# Export full analysis to a JSON file (creates detect_unused_code.json in current directory)
 detect_unused --json
+
+# Or specify a custom output JSON file name
+detect_unused --json=audit_report.json
 
 # Show code snippets for detected dead blocks
 detect_unused -v
@@ -196,7 +199,7 @@ detect_unused -v
 | `--include-internal` | - | `false` | Report public classes with 0 external references |
 | `--threshold <int>` | - | `60` | Percentage threshold for heavily commented files |
 | `--min-lines <int>` | - | `15` | Minimum lines to flag a dead block |
-| `--json` | - | `false` | Output structured JSON report |
+| `--json [filename]` | - | `false` | Save analysis report to a `.json` file (default: `detect_unused_code.json`) |
 | `--verbose` | `-v` | `false` | Print samples of detected commented blocks |
 | `--help` | `-h` | - | Display help message and exit |
 
@@ -289,9 +292,11 @@ The CLI returns exit code `1` when dead classes or 100% commented-out files are 
   ```bash
   detect_unused --unused-classes --include-internal
   ```
-- **إخراج التقرير بصيغة JSON للأتمتة (CI/CD):**
+- **تصدير التقرير كاملاً إلى ملف JSON (ينشئ ملف detect_unused_code.json في نفس المجلد):**
   ```bash
   detect_unused --json
+  # أو تحديد اسم مخصص للملف:
+  detect_unused --json=report.json
   ```
 
 ---
