@@ -220,6 +220,103 @@ class UnusedClassResult {
       };
 }
 
+/// Represents a detected TODO comment or pending task in the source code.
+class TodoItemResult {
+  /// Relative file path from the project root.
+  final String file;
+
+  /// Absolute system path to the file.
+  final String absolutePath;
+
+  /// Clickable `file://` URI string with line number for IDE navigation.
+  final String fileUri;
+
+  /// 1-based line number where the TODO comment was detected.
+  final int line;
+
+  /// The cleaned description message of the TODO.
+  final String message;
+
+  /// The full raw line text containing the TODO comment.
+  final String rawLine;
+
+  /// Creates a new [TodoItemResult].
+  TodoItemResult({
+    required this.file,
+    required this.absolutePath,
+    required this.fileUri,
+    required this.line,
+    required this.message,
+    required this.rawLine,
+  });
+
+  /// Serializes the TODO item into a JSON-compatible map.
+  Map<String, dynamic> toJson() => {
+        'file': file,
+        'absolutePath': absolutePath,
+        'fileUri': fileUri,
+        'line': line,
+        'message': message,
+        'rawLine': rawLine,
+      };
+}
+
+/// Represents a diagnostic issue identified by the Dart analyzer (e.g. unused variable or dead code).
+class DiagnosticIssueResult {
+  /// The analyzer diagnostic code name (e.g. `unused_local_variable`, `dead_code`).
+  final String code;
+
+  /// The human-readable description of the problem.
+  final String message;
+
+  /// Suggested correction message, if provided by the analyzer.
+  final String? correction;
+
+  /// Relative file path from the project root.
+  final String file;
+
+  /// Absolute system path to the file.
+  final String absolutePath;
+
+  /// Clickable `file://` URI string with line and column for IDE navigation.
+  final String fileUri;
+
+  /// 1-based line number where the diagnostic is located.
+  final int line;
+
+  /// 1-based column number where the diagnostic is located.
+  final int column;
+
+  /// Diagnostic severity level (e.g. `INFO`, `WARNING`, `ERROR`).
+  final String severity;
+
+  /// Creates a new [DiagnosticIssueResult].
+  DiagnosticIssueResult({
+    required this.code,
+    required this.message,
+    this.correction,
+    required this.file,
+    required this.absolutePath,
+    required this.fileUri,
+    required this.line,
+    required this.column,
+    required this.severity,
+  });
+
+  /// Serializes the diagnostic issue into a JSON-compatible map.
+  Map<String, dynamic> toJson() => {
+        'code': code,
+        'message': message,
+        if (correction != null) 'correction': correction,
+        'file': file,
+        'absolutePath': absolutePath,
+        'fileUri': fileUri,
+        'line': line,
+        'column': column,
+        'severity': severity,
+      };
+}
+
 /// Comprehensive report containing all findings from an audit run.
 class AnalysisReport {
   /// The target directory or file path analyzed.
@@ -246,6 +343,12 @@ class AnalysisReport {
   /// Public classes used only inside their declaring file.
   final List<UnusedClassResult> internalOnlyClasses;
 
+  /// Pending TODO comments detected in target files.
+  final List<TodoItemResult> todos;
+
+  /// Dart analyzer diagnostic issues (unused imports, variables, dead code, etc.).
+  final List<DiagnosticIssueResult> diagnostics;
+
   /// Creates a new [AnalysisReport].
   AnalysisReport({
     required this.targetPath,
@@ -256,10 +359,33 @@ class AnalysisReport {
     required this.filesWithCommentBlocks,
     required this.deadClasses,
     required this.internalOnlyClasses,
+    this.todos = const [],
+    this.diagnostics = const [],
   });
 
+  /// Unused or unnecessary imports (`unused_import`, `unnecessary_import`).
+  List<DiagnosticIssueResult> get unusedImports => diagnostics
+      .where((d) => d.code == 'unused_import' || d.code == 'unnecessary_import')
+      .toList();
+
+  /// Unused local variables and fields (`unused_local_variable`, `unused_field`).
+  List<DiagnosticIssueResult> get unusedVariablesAndFields => diagnostics
+      .where(
+          (d) => d.code == 'unused_local_variable' || d.code == 'unused_field')
+      .toList();
+
+  /// Unused elements (`unused_element`).
+  List<DiagnosticIssueResult> get unusedElements =>
+      diagnostics.where((d) => d.code == 'unused_element').toList();
+
+  /// Dead code and null-aware expressions (`dead_code`, `dead_null_aware_expression`).
+  List<DiagnosticIssueResult> get deadCodeAndExpressions => diagnostics
+      .where((d) =>
+          d.code == 'dead_code' || d.code == 'dead_null_aware_expression')
+      .toList();
+
   /// Serializes the full analysis report into a JSON-compatible map.
-  Map<String, dynamic> toJson({bool includeInternal = false}) => {
+  Map<String, dynamic> toJson({bool includeInternal = true}) => {
         'summary': {
           'targetPath': targetPath.isEmpty ? '.' : targetPath,
           'totalTargetDartFiles': totalTargetDartFiles,
@@ -269,6 +395,12 @@ class AnalysisReport {
           'filesWithCommentBlocksCount': filesWithCommentBlocks.length,
           'deadClassesCount': deadClasses.length,
           'internalOnlyClassesCount': internalOnlyClasses.length,
+          'todosCount': todos.length,
+          'unusedImportsCount': unusedImports.length,
+          'unusedVariablesAndFieldsCount': unusedVariablesAndFields.length,
+          'unusedElementsCount': unusedElements.length,
+          'deadCodeCount': deadCodeAndExpressions.length,
+          'totalDiagnosticsCount': diagnostics.length,
         },
         'commentedFiles': {
           'fullyCommented': fullyCommentedFiles.map((f) => f.toJson()).toList(),
@@ -279,6 +411,16 @@ class AnalysisReport {
           'deadClasses': deadClasses.map((c) => c.toJson()).toList(),
           if (includeInternal)
             'internalOnly': internalOnlyClasses.map((c) => c.toJson()).toList(),
+        },
+        'todos': todos.map((t) => t.toJson()).toList(),
+        'diagnostics': {
+          'all': diagnostics.map((d) => d.toJson()).toList(),
+          'unusedImports': unusedImports.map((d) => d.toJson()).toList(),
+          'unusedVariablesAndFields':
+              unusedVariablesAndFields.map((d) => d.toJson()).toList(),
+          'unusedElements': unusedElements.map((d) => d.toJson()).toList(),
+          'deadCodeAndExpressions':
+              deadCodeAndExpressions.map((d) => d.toJson()).toList(),
         },
       };
 }
@@ -297,6 +439,12 @@ class AuditorOptions {
   /// Whether to include file-internal only public classes in the report.
   final bool includeInternal;
 
+  /// Whether to scan and report TODO comments and pending tasks.
+  final bool runTodoAnalysis;
+
+  /// Whether to run Dart analyzer diagnostics (unused variables, imports, dead code).
+  final bool runDiagnostics;
+
   /// Comment ratio percentage (1-100) to flag a file as heavily commented.
   final int commentThreshold;
 
@@ -311,7 +459,9 @@ class AuditorOptions {
     this.targetPath,
     this.runClassAnalysis = true,
     this.runCommentAnalysis = true,
-    this.includeInternal = false,
+    this.includeInternal = true,
+    this.runTodoAnalysis = true,
+    this.runDiagnostics = true,
     this.commentThreshold = 60,
     this.minBlockLines = 15,
     this.verbose = false,
