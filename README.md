@@ -87,8 +87,8 @@ $ detect_unused
 ------------------------------------------------------------------------------
 
 📋 【6. TODO Comments & Pending Tasks】 - (2 items):
-   📝 [L14  ] lib/main.dart ➜ implement initState
-   📝 [L89  ] lib/services/api.dart ➜ add retry timeout logic
+   📝 [L14  ] lib/main.dart:14 ➜ implement initState
+   📝 [L89  ] lib/services/api.dart:89 ➜ add retry timeout logic
 
 ------------------------------------------------------------------------------
 
