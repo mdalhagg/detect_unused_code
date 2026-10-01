@@ -26,9 +26,18 @@ void main() {
   print('Internal-only classes: ${report.internalOnlyClasses.length}');
   print('Fully commented files: ${report.fullyCommentedFiles.length}');
   print('Files with dead blocks: ${report.filesWithCommentBlocks.length}');
+  print('Pending TODOs: ${report.todos.length}');
+  print('Unused imports: ${report.unusedImports.length}');
+  print('Unused variables & fields: ${report.unusedVariablesAndFields.length}');
+  print('Unused elements: ${report.unusedElements.length}');
+  print('Dead code & null-aware: ${report.deadCodeAndExpressions.length}');
 
   for (final deadClass in report.deadClasses) {
     print(
         'Dead class: ${deadClass.name} at ${deadClass.relPath}:${deadClass.line}');
+  }
+
+  for (final todo in report.todos) {
+    print('TODO at ${todo.file}:${todo.line} -> ${todo.message}');
   }
 }

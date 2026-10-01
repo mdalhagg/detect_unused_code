@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'models.dart';
@@ -32,8 +33,10 @@ class UnusedCodeAuditor {
 
     final runClassAnalysis = options.runClassAnalysis;
     final runCommentAnalysis = options.runCommentAnalysis;
+    final runTodoAnalysis = options.runTodoAnalysis;
+    final runDiagnostics = options.runDiagnostics;
 
-    // 1. Build cache map (0% - 40%)
+    // 1. Build cache map (0% - 25%)
     final projectCleanMap = <String, String>{};
     if (runClassAnalysis) {
       final total = allProjectFiles.length;
@@ -45,15 +48,13 @@ class UnusedCodeAuditor {
               stripCommentsAndStrings(raw);
         } catch (_) {}
         if (i % 15 == 0 || i == total - 1) {
-          final p = runCommentAnalysis
-              ? (((i + 1) / (total == 0 ? 1 : total)) * 40).floor()
-              : (((i + 1) / (total == 0 ? 1 : total)) * 45).floor();
+          final p = (((i + 1) / (total == 0 ? 1 : total)) * 25).floor();
           onProgress?.call(p, 'Reading & indexing (${i + 1}/$total)');
         }
       }
     }
 
-    // 2. Analyze commented code (40% - 50%)
+    // 2. Analyze commented code & TODO comments (25% - 50%)
     List<CommentedFileResult> commentedResults = [];
     if (runCommentAnalysis) {
       commentedResults = _analyzeCommentedCode(
@@ -62,15 +63,25 @@ class UnusedCodeAuditor {
         commentThreshold: options.commentThreshold,
         minBlockLines: options.minBlockLines,
         onFileProgress: (curr, total) {
-          final p = runClassAnalysis
-              ? 40 + (((curr / total) * 10).floor())
-              : ((curr / total) * 100).floor();
+          final p = 25 + (((curr / total) * 15).floor());
           onProgress?.call(p, 'Scanning comments ($curr/$total)');
         },
       );
     }
 
-    // 3. Analyze unused classes (50% - 100%)
+    List<TodoItemResult> todos = [];
+    if (runTodoAnalysis) {
+      todos = _scanTodos(
+        targetFiles,
+        projectRoot.path,
+        onFileProgress: (curr, total) {
+          final p = 40 + (((curr / total) * 10).floor());
+          onProgress?.call(p, 'Scanning TODO tasks ($curr/$total)');
+        },
+      );
+    }
+
+    // 3. Analyze unused classes (50% - 75%)
     List<UnusedClassResult> unusedClassResults = [];
     if (runClassAnalysis) {
       unusedClassResults = _analyzeUnusedClasses(
@@ -78,12 +89,18 @@ class UnusedCodeAuditor {
         projectCleanMap,
         projectRoot.path,
         onFileProgress: (curr, total) {
-          final p = runCommentAnalysis
-              ? 50 + (((curr / total) * 50).floor())
-              : 45 + (((curr / total) * 55).floor());
+          final p = 50 + (((curr / total) * 25).floor());
           onProgress?.call(p, 'Auditing classes ($curr/$total)');
         },
       );
+    }
+
+    // 4. Run Dart Analyzer diagnostics (75% - 95%)
+    List<DiagnosticIssueResult> diagnostics = [];
+    if (runDiagnostics) {
+      onProgress?.call(80, 'Running Dart analyzer diagnostics...');
+      diagnostics = _runDartAnalyzer(projectRoot, targetEntity);
+      onProgress?.call(95, 'Dart analyzer completed');
     }
 
     onProgress?.call(100, 'Completed!');
@@ -116,6 +133,8 @@ class UnusedCodeAuditor {
       filesWithCommentBlocks: filesWithCommentBlocks,
       deadClasses: deadClasses,
       internalOnlyClasses: internalOnlyClasses,
+      todos: todos,
+      diagnostics: diagnostics,
     );
   }
 
@@ -376,5 +395,206 @@ class UnusedCodeAuditor {
     }
 
     return results;
+  }
+
+  List<TodoItemResult> _scanTodos(
+    List<File> files,
+    String rootPath, {
+    void Function(int current, int total)? onFileProgress,
+  }) {
+    final todos = <TodoItemResult>[];
+    final total = files.length;
+
+    for (int fileIdx = 0; fileIdx < total; fileIdx++) {
+      final file = files[fileIdx];
+      if (onFileProgress != null &&
+          (fileIdx % 10 == 0 || fileIdx == total - 1)) {
+        onFileProgress(fileIdx + 1, total);
+      }
+      String content;
+      try {
+        content = file.readAsStringSync();
+      } catch (_) {
+        continue;
+      }
+
+      final lines = content.split(RegExp(r'\r?\n'));
+      bool inBlockComment = false;
+      bool inTripleSingle = false;
+      bool inTripleDouble = false;
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        final trimmed = line.trim();
+        final lineNum = i + 1;
+
+        if (!inBlockComment) {
+          final countTripleSingle = "'''".allMatches(line).length;
+          if (countTripleSingle % 2 != 0) {
+            inTripleSingle = !inTripleSingle;
+          }
+          final countTripleDouble = '"""'.allMatches(line).length;
+          if (countTripleDouble % 2 != 0) {
+            inTripleDouble = !inTripleDouble;
+          }
+        }
+
+        if (inTripleSingle || inTripleDouble) {
+          continue;
+        }
+
+        // Dartdoc comments (///) are documentation, not pending TODO directives
+        if (trimmed.startsWith('///')) {
+          continue;
+        }
+
+        String? todoText;
+
+        if (inBlockComment) {
+          final blockMatch =
+              RegExp(r'^\*?\s*TODO\b:?\s*(.*)', caseSensitive: false)
+                  .firstMatch(trimmed);
+          if (blockMatch != null) {
+            todoText = blockMatch.group(1)?.trim();
+          }
+          if (trimmed.contains('*/')) {
+            inBlockComment = false;
+          }
+        } else if (trimmed.startsWith('/*')) {
+          final startBlockMatch =
+              RegExp(r'^/\*\s*TODO\b:?\s*(.*)', caseSensitive: false)
+                  .firstMatch(trimmed);
+          if (startBlockMatch != null) {
+            todoText = startBlockMatch.group(1)?.trim();
+          }
+          if (!trimmed.contains('*/') ||
+              trimmed.indexOf('*/') < trimmed.indexOf('/*') + 2) {
+            inBlockComment = true;
+          }
+        } else if (trimmed.startsWith('//')) {
+          final lineMatch =
+              RegExp(r'^//\s*TODO\b:?\s*(.*)', caseSensitive: false)
+                  .firstMatch(trimmed);
+          if (lineMatch != null) {
+            todoText = lineMatch.group(1)?.trim();
+          }
+        } else if (line.contains('//')) {
+          final idx = line.indexOf('//');
+          final before = line.substring(0, idx);
+          final singleQuotes = "'".allMatches(before).length;
+          final doubleQuotes = '"'.allMatches(before).length;
+          if (singleQuotes % 2 == 0 && doubleQuotes % 2 == 0) {
+            final after = line.substring(idx).trim();
+            final inlineMatch =
+                RegExp(r'^//\s*TODO\b:?\s*(.*)', caseSensitive: false)
+                    .firstMatch(after);
+            if (inlineMatch != null) {
+              todoText = inlineMatch.group(1)?.trim();
+            }
+          }
+        }
+
+        if (todoText != null) {
+          var msg = todoText;
+          if (msg.endsWith('*/')) {
+            msg = msg.substring(0, msg.length - 2).trim();
+          }
+          if (msg.isEmpty) {
+            msg = '(No description provided)';
+          }
+          final relPath = getRelativePath(file.path, rootPath);
+          todos.add(TodoItemResult(
+            file: relPath,
+            absolutePath: file.path,
+            fileUri: toFileUri(file.path, line: lineNum),
+            line: lineNum,
+            message: msg,
+            rawLine: line.trim(),
+          ));
+        }
+      }
+    }
+    return todos;
+  }
+
+  List<DiagnosticIssueResult> _runDartAnalyzer(
+    Directory projectRoot,
+    FileSystemEntity targetEntity,
+  ) {
+    try {
+      final targetPath = targetEntity.path;
+      final result = Process.runSync(
+        'dart',
+        ['analyze', '--format=json', targetPath],
+        workingDirectory: projectRoot.path,
+        runInShell: true,
+      );
+
+      final stdoutStr = result.stdout as String? ?? '';
+      if (stdoutStr.trim().isEmpty) {
+        return [];
+      }
+
+      final jsonStart = stdoutStr.indexOf('{');
+      final jsonEnd = stdoutStr.lastIndexOf('}');
+      if (jsonStart == -1 || jsonEnd == -1 || jsonEnd < jsonStart) {
+        return [];
+      }
+
+      final jsonContent = stdoutStr.substring(jsonStart, jsonEnd + 1);
+      final decoded = jsonDecode(jsonContent) as Map<String, dynamic>;
+      final diagnosticsJson = decoded['diagnostics'] as List<dynamic>? ?? [];
+
+      const targetCodes = {
+        'unused_local_variable',
+        'unused_element',
+        'dead_null_aware_expression',
+        'unused_import',
+        'dead_code',
+        'unused_field',
+        'unnecessary_import',
+      };
+
+      final results = <DiagnosticIssueResult>[];
+      for (final item in diagnosticsJson) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final rawCode = (item['code'] ?? '').toString().toLowerCase();
+        if (!targetCodes.contains(rawCode)) {
+          continue;
+        }
+
+        final message = (item['problemMessage'] ?? '').toString();
+        final correction = item['correctionMessage']?.toString();
+        final severity = (item['severity'] ?? 'INFO').toString();
+
+        final location = item['location'] as Map<String, dynamic>?;
+        final filePath = (location?['file'] ?? '').toString();
+        final range = location?['range'] as Map<String, dynamic>?;
+        final start = range?['start'] as Map<String, dynamic>?;
+        final line = (start?['line'] as num?)?.toInt() ?? 1;
+        final column = (start?['column'] as num?)?.toInt() ?? 1;
+
+        final relPath = getRelativePath(filePath, projectRoot.path);
+        final fileUri = toFileUri(filePath, line: line, column: column);
+
+        results.add(DiagnosticIssueResult(
+          code: rawCode,
+          message: message,
+          correction: correction,
+          file: relPath,
+          absolutePath: filePath,
+          fileUri: fileUri,
+          line: line,
+          column: column,
+          severity: severity,
+        ));
+      }
+
+      return results;
+    } catch (_) {
+      return [];
+    }
   }
 }

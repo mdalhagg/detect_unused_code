@@ -1,3 +1,20 @@
+## 1.3.0
+
+- Added comprehensive all-in-one default inspection covering 13 code quality points without requiring extra flags.
+- Added Dart Analyzer diagnostics inspection:
+  - `unused_import`: Unused imports across files.
+  - `unnecessary_import`: Duplicate or redundant imports.
+  - `unused_local_variable`: Unused local variables.
+  - `unused_field`: Unused class fields.
+  - `unused_element`: Unused private functions, methods, and elements.
+  - `dead_code`: Unreachable dead code blocks.
+  - `dead_null_aware_expression`: Unnecessary null-aware `?.` operators on non-nullable targets.
+- Added TODO task tracker: Detects pending `// TODO: ...` and `/* TODO ... */` tasks with exact line numbers, descriptions, and clickable file URIs.
+- Enabled file-internal only public classes analysis by default (`includeInternal: true`).
+- Added fine-tuning flags: `--todos-only`, `--diagnostics-only`, `--no-todos`, `--no-diagnostics`, and `--no-internal`.
+- Updated JSON report export (`--json`) to serialize all 13 inspection points and categorized diagnostics.
+- Added `TodoItemResult` and `DiagnosticIssueResult` models with full dartdoc documentation.
+
 ## 1.2.0
 
 - Added comprehensive dartdoc documentation comments across 100% of public API elements (classes, constructors, methods, and properties).

@@ -94,8 +94,8 @@ String canonicalizePath(String p) {
   return result.toLowerCase();
 }
 
-/// Converts a system path to a clickable `file://` URI string.
-String toFileUri(String p) {
+/// Converts a system path to a clickable `file://` URI string, optionally with line and column.
+String toFileUri(String p, {int? line, int? column}) {
   var norm = p.replaceAll(r'\', '/').replaceAll(RegExp(r'/+'), '/');
   if (!norm.startsWith('/') && !RegExp(r'^[a-zA-Z]:').hasMatch(norm)) {
     final cur = Directory.current.path.replaceAll(r'\', '/');
@@ -118,7 +118,15 @@ String toFileUri(String p) {
   if (!cleanPath.startsWith('/')) {
     cleanPath = '/$cleanPath';
   }
-  return 'file://$cleanPath';
+
+  var uri = 'file://$cleanPath';
+  if (line != null) {
+    uri = '$uri:$line';
+    if (column != null) {
+      uri = '$uri:$column';
+    }
+  }
+  return uri;
 }
 
 /// Returns the relative path from [basePath] to [fullPath].

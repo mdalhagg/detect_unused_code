@@ -13,6 +13,8 @@ export 'src/models.dart'
         UnusedClassResult,
         CommentedFileResult,
         CommentBlockResult,
-        DeclaredClassItem;
+        DeclaredClassItem,
+        TodoItemResult,
+        DiagnosticIssueResult;
 export 'src/utils.dart'
     show findProjectOrWorkspaceRoot, resolveTargetPath, walkDartFiles;
