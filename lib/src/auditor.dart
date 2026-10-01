@@ -3,17 +3,24 @@ import 'dart:io';
 import 'models.dart';
 import 'utils.dart';
 
+/// Callback signature for progress monitoring during an audit.
 typedef AuditorProgressCallback = void Function(int percent, String message);
 
+/// Primary auditor engine that scans Dart projects for dead code, unused classes, and commented files.
 class UnusedCodeAuditor {
+  /// The root directory of the project being audited.
   final Directory projectRoot;
+
+  /// Configuration options for the audit run.
   final AuditorOptions options;
 
+  /// Creates a new [UnusedCodeAuditor] for the specified [projectRoot] and [options].
   UnusedCodeAuditor({
     Directory? projectRoot,
     this.options = const AuditorOptions(),
   }) : projectRoot = projectRoot ?? findProjectOrWorkspaceRoot();
 
+  /// Runs the full code analysis and returns an [AnalysisReport].
   AnalysisReport run({AuditorProgressCallback? onProgress}) {
     final targetEntity = resolveTargetPath(
       options.targetPath,
@@ -34,7 +41,8 @@ class UnusedCodeAuditor {
         final f = allProjectFiles[i];
         try {
           final raw = f.readAsStringSync();
-          projectCleanMap[canonicalizePath(f.path)] = stripCommentsAndStrings(raw);
+          projectCleanMap[canonicalizePath(f.path)] =
+              stripCommentsAndStrings(raw);
         } catch (_) {}
         if (i % 15 == 0 || i == total - 1) {
           final p = runCommentAnalysis
@@ -80,17 +88,22 @@ class UnusedCodeAuditor {
 
     onProgress?.call(100, 'Completed!');
 
-    final fullyCommentedFiles = commentedResults.where((f) => f.isFullyCommented).toList();
-    final highRatioFiles = commentedResults.where((f) => f.isHighCommentRatio).toList();
+    final fullyCommentedFiles =
+        commentedResults.where((f) => f.isFullyCommented).toList();
+    final highRatioFiles =
+        commentedResults.where((f) => f.isHighCommentRatio).toList();
     final filesWithCommentBlocks = commentedResults
-        .where((f) => !f.isFullyCommented && !f.isHighCommentRatio && f.blocks.isNotEmpty)
+        .where((f) =>
+            !f.isFullyCommented && !f.isHighCommentRatio && f.blocks.isNotEmpty)
         .toList();
 
     final deadClasses = unusedClassResults
-        .where((c) => c.type == 'PUBLIC_ZERO_EXTERNAL' || c.type == 'PRIVATE_UNUSED')
+        .where((c) =>
+            c.type == 'PUBLIC_ZERO_EXTERNAL' || c.type == 'PRIVATE_UNUSED')
         .toList();
-    final internalOnlyClasses =
-        unusedClassResults.where((c) => c.type == 'FILE_INTERNAL_ONLY').toList();
+    final internalOnlyClasses = unusedClassResults
+        .where((c) => c.type == 'FILE_INTERNAL_ONLY')
+        .toList();
 
     final relTarget = getRelativePath(targetEntity.path, projectRoot.path);
 
@@ -118,7 +131,8 @@ class UnusedCodeAuditor {
 
     for (int fileIdx = 0; fileIdx < total; fileIdx++) {
       final file = files[fileIdx];
-      if (onFileProgress != null && (fileIdx % 10 == 0 || fileIdx == total - 1)) {
+      if (onFileProgress != null &&
+          (fileIdx % 10 == 0 || fileIdx == total - 1)) {
         onFileProgress(fileIdx + 1, total);
       }
       String content;
@@ -152,7 +166,8 @@ class UnusedCodeAuditor {
         } else if (trimmed.startsWith('/*')) {
           isComment = true;
           if (isDartCodeLine(trimmed)) isCodeComment = true;
-          if (!trimmed.contains('*/') || trimmed.indexOf('*/') < trimmed.indexOf('/*') + 2) {
+          if (!trimmed.contains('*/') ||
+              trimmed.indexOf('*/') < trimmed.indexOf('/*') + 2) {
             inBlockComment = true;
           }
         } else if (trimmed.startsWith('//')) {
@@ -163,7 +178,8 @@ class UnusedCodeAuditor {
 
         if (isComment) {
           if (!isEmpty) commentLinesCount++;
-          currentBlock.add(CommentBlockItem(line: lineNum, text: trimmed, isCode: isCodeComment));
+          currentBlock.add(CommentBlockItem(
+              line: lineNum, text: trimmed, isCode: isCodeComment));
         } else {
           if (currentBlock.length >= minBlockLines) {
             final codeLines = currentBlock.where((b) => b.isCode).length;
@@ -196,14 +212,17 @@ class UnusedCodeAuditor {
 
       if (totalNonEmpty == 0) continue;
 
-      final commentRatio = ((commentLinesCount / totalNonEmpty) * 100).round().clamp(0, 100);
+      final commentRatio =
+          ((commentLinesCount / totalNonEmpty) * 100).round().clamp(0, 100);
       final isFullyCommented = commentRatio >= 90 && totalNonEmpty >= 8;
-      final isHighCommentRatio =
-          !isFullyCommented && commentRatio >= commentThreshold && totalNonEmpty >= 15;
+      final isHighCommentRatio = !isFullyCommented &&
+          commentRatio >= commentThreshold &&
+          totalNonEmpty >= 15;
 
       if (isFullyCommented || isHighCommentRatio || detectedBlocks.isNotEmpty) {
         final relPath = getRelativePath(file.path, rootPath);
-        final commentedClasses = isFullyCommented ? extractCommentedClasses(content) : <String>[];
+        final commentedClasses =
+            isFullyCommented ? extractCommentedClasses(content) : <String>[];
 
         results.add(CommentedFileResult(
           file: relPath,
@@ -257,7 +276,8 @@ class UnusedCodeAuditor {
             category = 'Mixin';
           } else if (isExtension) {
             category = 'Extension';
-          } else if (line.contains('Controller') || className.endsWith('Controller')) {
+          } else if (line.contains('Controller') ||
+              className.endsWith('Controller')) {
             category = 'Controller';
           } else if (line.contains('Widget') ||
               line.contains('State<') ||
@@ -272,7 +292,8 @@ class UnusedCodeAuditor {
               className.endsWith('Response') ||
               className.endsWith('Request')) {
             category = 'Entity/Model';
-          } else if (className.endsWith('Repository') || className.endsWith('Service')) {
+          } else if (className.endsWith('Repository') ||
+              className.endsWith('Service')) {
             category = 'Service/Repository';
           }
 
@@ -344,7 +365,8 @@ class UnusedCodeAuditor {
               isPrivate: false,
               type: 'FILE_INTERNAL_ONLY',
               severity: 'MEDIUM',
-              reason: 'Public class used file-internally only ($internalUsages local usages)',
+              reason:
+                  'Public class used file-internally only ($internalUsages local usages)',
               internalMatches: internalUsages,
               externalMatches: 0,
             ));

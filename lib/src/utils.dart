@@ -1,5 +1,6 @@
 import 'dart:io';
 
+/// Set of directory names to ignore during Dart file discovery.
 const ignoredDirNames = {
   '.git',
   '.dart_tool',
@@ -11,6 +12,7 @@ const ignoredDirNames = {
   'Flashpost-tests',
 };
 
+/// Keywords used to detect whether a commented line contains Dart code syntax.
 const dartSyntaxKeywords = [
   'import ',
   'export ',
@@ -45,9 +47,13 @@ const dartSyntaxKeywords = [
   'Row(',
 ];
 
+/// Normalizes and trims path strings from quotes, extra slashes, and leading `./`.
 String cleanInputPath(String s) {
   var p = s.trim();
-  while (p.startsWith('"') || p.startsWith("'") || p.endsWith('"') || p.endsWith("'")) {
+  while (p.startsWith('"') ||
+      p.startsWith("'") ||
+      p.endsWith('"') ||
+      p.endsWith("'")) {
     p = p.replaceAll(RegExp(r'''^["']+|["']+$'''), '');
   }
   p = p.replaceAll(r'\', '/');
@@ -61,6 +67,7 @@ String cleanInputPath(String s) {
   return p.trim();
 }
 
+/// Converts a path to an absolute, normalized, lower-case canonical path.
 String canonicalizePath(String p) {
   var norm = p.replaceAll(r'\', '/').replaceAll(RegExp(r'/+'), '/');
   if (!norm.startsWith('/') && !RegExp(r'^[a-zA-Z]:').hasMatch(norm)) {
@@ -72,7 +79,9 @@ String canonicalizePath(String p) {
   final resolved = <String>[];
   for (final seg in segments) {
     if (seg == '..') {
-      if (resolved.isNotEmpty) resolved.removeLast();
+      if (resolved.isNotEmpty) {
+        resolved.removeLast();
+      }
     } else if (seg != '.' && seg.isNotEmpty) {
       resolved.add(seg);
     }
@@ -85,6 +94,7 @@ String canonicalizePath(String p) {
   return result.toLowerCase();
 }
 
+/// Converts a system path to a clickable `file://` URI string.
 String toFileUri(String p) {
   var norm = p.replaceAll(r'\', '/').replaceAll(RegExp(r'/+'), '/');
   if (!norm.startsWith('/') && !RegExp(r'^[a-zA-Z]:').hasMatch(norm)) {
@@ -96,7 +106,9 @@ String toFileUri(String p) {
   final resolved = <String>[];
   for (final seg in segments) {
     if (seg == '..') {
-      if (resolved.isNotEmpty) resolved.removeLast();
+      if (resolved.isNotEmpty) {
+        resolved.removeLast();
+      }
     } else if (seg != '.' && seg.isNotEmpty) {
       resolved.add(seg);
     }
@@ -109,18 +121,23 @@ String toFileUri(String p) {
   return 'file://$cleanPath';
 }
 
+/// Returns the relative path from [basePath] to [fullPath].
 String getRelativePath(String fullPath, String basePath) {
-  final normFull = fullPath.replaceAll(r'\', '/').replaceAll(RegExp(r'/+'), '/');
+  final normFull =
+      fullPath.replaceAll(r'\', '/').replaceAll(RegExp(r'/+'), '/');
   final canonFull = canonicalizePath(fullPath);
   final canonBase = canonicalizePath(basePath);
   if (canonFull.startsWith(canonBase)) {
     var rel = normFull.substring(canonBase.length);
-    if (rel.startsWith('/')) rel = rel.substring(1);
+    if (rel.startsWith('/')) {
+      rel = rel.substring(1);
+    }
     return rel;
   }
   return normFull;
 }
 
+/// Automatically searches for and resolves the project root directory.
 Directory findProjectOrWorkspaceRoot([Directory? startDir]) {
   final dir = startDir ?? Directory.current;
 
@@ -148,12 +165,15 @@ Directory findProjectOrWorkspaceRoot([Directory? startDir]) {
   return dir;
 }
 
+/// Resolves user input into a target directory or file entity within [projectRoot].
 FileSystemEntity resolveTargetPath(
   String? input,
   Directory projectRoot, {
   bool isJson = false,
 }) {
-  if (input == null || input.trim().isEmpty) return projectRoot;
+  if (input == null || input.trim().isEmpty) {
+    return projectRoot;
+  }
 
   final cleaned = cleanInputPath(input);
 
@@ -173,17 +193,23 @@ FileSystemEntity resolveTargetPath(
   }
 
   if (!isJson) {
-    print('⚠️ Note: Specified target path "$input" was not found, falling back to project root.');
+    print(
+        '⚠️ Note: Specified target path "$input" was not found, falling back to project root.');
   }
   return projectRoot;
 }
 
+/// Recursively scans and collects all `.dart` files under [entity].
 List<File> walkDartFiles(FileSystemEntity entity) {
   final results = <File>[];
-  if (!entity.existsSync()) return results;
+  if (!entity.existsSync()) {
+    return results;
+  }
 
   if (entity is File) {
-    if (entity.path.endsWith('.dart')) results.add(entity);
+    if (entity.path.endsWith('.dart')) {
+      results.add(entity);
+    }
     return results;
   }
 
@@ -192,9 +218,12 @@ List<File> walkDartFiles(FileSystemEntity entity) {
       final entries = entity.listSync(followLinks: false);
       for (final entry in entries) {
         final name = entry.uri.pathSegments.isNotEmpty
-            ? entry.uri.pathSegments[entry.uri.pathSegments.length - (entry is Directory ? 2 : 1)]
+            ? entry.uri.pathSegments[
+                entry.uri.pathSegments.length - (entry is Directory ? 2 : 1)]
             : '';
-        if (ignoredDirNames.contains(name)) continue;
+        if (ignoredDirNames.contains(name)) {
+          continue;
+        }
 
         if (entry is Directory) {
           results.addAll(walkDartFiles(entry));
@@ -207,10 +236,12 @@ List<File> walkDartFiles(FileSystemEntity entity) {
   return results;
 }
 
+/// Checks whether a single line of text matches known Dart syntax keywords.
 bool isDartCodeLine(String text) {
   return dartSyntaxKeywords.any((kw) => text.contains(kw));
 }
 
+/// Extracts declared class, enum, and mixin names that are commented out in [content].
 List<String> extractCommentedClasses(String content) {
   final regex = RegExp(
     r'(?://|/\*|\*)\s*(?:(?:abstract\s+|base\s+|sealed\s+)?class|enum|mixin)\s+([A-Za-z0-9_$]+)',
@@ -225,6 +256,8 @@ List<String> extractCommentedClasses(String content) {
   return found.toList();
 }
 
+/// Strips all block comments, single-line comments, and string literals from [content]
+/// while preserving exact line offsets.
 String stripCommentsAndStrings(String content) {
   // 1. Multi-line block comments /* ... */ (preserve line count)
   String clean = content.replaceAllMapped(
@@ -252,6 +285,8 @@ String stripCommentsAndStrings(String content) {
   return clean;
 }
 
+/// Counts how many times [className] is referenced within its declaring file,
+/// excluding the declaration header itself.
 int countInternalUsages(String cleanCode, String className) {
   final declRegex = RegExp(
     r'\b(?:(?:abstract\s+|base\s+|sealed\s+|interface\s+|final\s+)?class|(?:enum)|(?:mixin)|(?:extension\s+type)|(?:extension))\s+' +
@@ -259,7 +294,9 @@ int countInternalUsages(String cleanCode, String className) {
         r'\b',
   );
   final match = declRegex.firstMatch(cleanCode);
-  if (match == null) return 0;
+  if (match == null) {
+    return 0;
+  }
 
   final startIdx = match.start;
   final nextSemicolon = cleanCode.indexOf(';', startIdx);
@@ -270,7 +307,8 @@ int countInternalUsages(String cleanCode, String className) {
     final before = cleanCode.substring(0, startIdx);
     final after = endIdx < cleanCode.length ? cleanCode.substring(endIdx) : '';
     final wordRegex = RegExp(r'\b' + RegExp.escape(className) + r'\b');
-    return wordRegex.allMatches(before).length + wordRegex.allMatches(after).length;
+    return wordRegex.allMatches(before).length +
+        wordRegex.allMatches(after).length;
   }
 
   int depth = 1;
@@ -288,5 +326,6 @@ int countInternalUsages(String cleanCode, String className) {
   final before = cleanCode.substring(0, startIdx);
   final after = idx < cleanCode.length ? cleanCode.substring(idx) : '';
   final wordRegex = RegExp(r'\b' + RegExp.escape(className) + r'\b');
-  return wordRegex.allMatches(before).length + wordRegex.allMatches(after).length;
+  return wordRegex.allMatches(before).length +
+      wordRegex.allMatches(after).length;
 }

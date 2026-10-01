@@ -5,11 +5,17 @@ import 'auditor.dart';
 import 'models.dart';
 import 'utils.dart';
 
+/// Command-line interface runner for auditing unused code.
 class CliRunner {
+  /// The list of raw command-line arguments passed to the runner.
   final List<String> args;
 
+  /// Creates a new [CliRunner] with the provided command-line arguments.
   CliRunner(this.args);
 
+  /// Executes the audit based on the parsed CLI arguments.
+  ///
+  /// Returns exit code `0` if no dead code was detected, or `1` if issues were found.
   int run() {
     if (args.contains('--help') || args.contains('-h')) {
       printHelp();
@@ -38,7 +44,8 @@ class CliRunner {
       }
     }
 
-    final onlyUnusedClasses = args.contains('--unused-classes') || args.contains('--classes');
+    final onlyUnusedClasses =
+        args.contains('--unused-classes') || args.contains('--classes');
     final onlyCommented = args.contains('--commented') ||
         args.contains('--commented-code') ||
         args.contains('--comments');
@@ -83,7 +90,8 @@ class CliRunner {
       final filled = ((clamped / 100) * barWidth).round();
       final empty = barWidth - filled;
       final bar = '${'█' * filled}${'░' * (empty > 0 ? empty : 0)}';
-      final text = '\r⏳ Loading & Analyzing: [$bar] ${clamped.toString().padLeft(3)}% | $label';
+      final text =
+          '\r⏳ Loading & Analyzing: [$bar] ${clamped.toString().padLeft(3)}% | $label';
       stdout.write(text);
     }
 
@@ -97,24 +105,35 @@ class CliRunner {
       final outputFile = File('${Directory.current.path}/$jsonFileName');
       outputFile.writeAsStringSync(jsonString);
 
-      print('================================================================================');
+      print(
+          '================================================================================');
       print('✅ JSON Audit Report generated successfully!');
       print('📁 File Saved: [${outputFile.path}]');
       print('📄 Dart Files Scanned:       ${report.totalTargetDartFiles}');
       print('💀 Dead Classes Found:       ${report.deadClasses.length}');
       if (includeInternal) {
-        print('⚠️ Internal-only Classes:    ${report.internalOnlyClasses.length}');
+        print(
+            '⚠️ Internal-only Classes:    ${report.internalOnlyClasses.length}');
       }
-      print('🚫 Fully Commented Files:    ${report.fullyCommentedFiles.length}');
-      print('📦 Files with Dead Blocks:   ${report.filesWithCommentBlocks.length}');
-      print('================================================================================\n');
+      print(
+          '🚫 Fully Commented Files:    ${report.fullyCommentedFiles.length}');
+      print(
+          '📦 Files with Dead Blocks:   ${report.filesWithCommentBlocks.length}');
+      print(
+          '================================================================================\n');
 
-      return (report.deadClasses.isNotEmpty || report.fullyCommentedFiles.isNotEmpty) ? 1 : 0;
+      return (report.deadClasses.isNotEmpty ||
+              report.fullyCommentedFiles.isNotEmpty)
+          ? 1
+          : 0;
     }
 
     _printConsoleReport(report, options, projectRoot);
 
-    return (report.deadClasses.isNotEmpty || report.fullyCommentedFiles.isNotEmpty) ? 1 : 0;
+    return (report.deadClasses.isNotEmpty ||
+            report.fullyCommentedFiles.isNotEmpty)
+        ? 1
+        : 0;
   }
 
   void _printConsoleReport(
@@ -125,36 +144,45 @@ class CliRunner {
     print('\n${'=' * 78}');
     print('🔎 DEAD CODE & UNUSED CLASSES AUDITOR REPORT');
     print('📁 Target Scope: [${report.targetPath}]');
-    print('📄 Dart Files:   ${report.totalTargetDartFiles} scanned (out of ${report.totalProjectDartFiles} total in project)');
+    print(
+        '📄 Dart Files:   ${report.totalTargetDartFiles} scanned (out of ${report.totalProjectDartFiles} total in project)');
     print('=' * 78);
 
     if (options.runCommentAnalysis) {
       if (report.fullyCommentedFiles.isNotEmpty) {
-        print('\n🚫 【1. Fully Commented-Out Files (100% Comments)】 - (${report.fullyCommentedFiles.length} files):');
-        print('   (These files contain entirely commented-out code and can be safely deleted or restored)');
+        print(
+            '\n🚫 【1. Fully Commented-Out Files (100% Comments)】 - (${report.fullyCommentedFiles.length} files):');
+        print(
+            '   (These files contain entirely commented-out code and can be safely deleted or restored)');
         for (final f in report.fullyCommentedFiles) {
           final classesHint = f.commentedClasses.isNotEmpty
               ? '\n      ↳ Commented classes found inside: [ ${f.commentedClasses.join(', ')} ]'
               : '';
-          print('   🔴 [${f.commentRatio}% comments | ${f.totalNonEmptyLines} lines]: ${f.file}$classesHint');
+          print(
+              '   🔴 [${f.commentRatio}% comments | ${f.totalNonEmptyLines} lines]: ${f.file}$classesHint');
         }
       }
 
       if (report.highRatioFiles.isNotEmpty) {
-        print('\n⚠️ 【2. Heavily Commented Files (>= ${options.commentThreshold}% comments)】 - (${report.highRatioFiles.length} files):');
+        print(
+            '\n⚠️ 【2. Heavily Commented Files (>= ${options.commentThreshold}% comments)】 - (${report.highRatioFiles.length} files):');
         for (final f in report.highRatioFiles) {
-          print('   🟠 [${f.commentRatio}% comments | ${f.commentLinesCount}/${f.totalNonEmptyLines} lines]: ${f.file}');
+          print(
+              '   🟠 [${f.commentRatio}% comments | ${f.commentLinesCount}/${f.totalNonEmptyLines} lines]: ${f.file}');
         }
       }
 
       if (report.filesWithCommentBlocks.isNotEmpty) {
-        print('\n📦 【3. Active Files with Large Commented Code Blocks (>= ${options.minBlockLines} lines)】 - (${report.filesWithCommentBlocks.length} files):');
+        print(
+            '\n📦 【3. Active Files with Large Commented Code Blocks (>= ${options.minBlockLines} lines)】 - (${report.filesWithCommentBlocks.length} files):');
         for (final f in report.filesWithCommentBlocks) {
           print('   🟡 ${f.file}');
           for (final b in f.blocks) {
-            print('      ↳ Lines [L${b.startLine} - L${b.endLine}] (${b.totalLines} lines, ${b.codeLines} lines containing Dart syntax)');
+            print(
+                '      ↳ Lines [L${b.startLine} - L${b.endLine}] (${b.totalLines} lines, ${b.codeLines} lines containing Dart syntax)');
             if (options.verbose && b.sample.isNotEmpty) {
-              print('         Sample:\n         ${b.sample.replaceAll('\n', '\n         ')}');
+              print(
+                  '         Sample:\n         ${b.sample.replaceAll('\n', '\n         ')}');
             }
           }
         }
@@ -163,15 +191,18 @@ class CliRunner {
       if (report.fullyCommentedFiles.isEmpty &&
           report.highRatioFiles.isEmpty &&
           report.filesWithCommentBlocks.isEmpty) {
-        print('\n✅ Commented Code: No commented-out files or dead code blocks detected in this scope.');
+        print(
+            '\n✅ Commented Code: No commented-out files or dead code blocks detected in this scope.');
       }
     }
 
     if (options.runClassAnalysis) {
       print('\n${'-' * 78}');
       if (report.deadClasses.isNotEmpty) {
-        print('\n💀 【4. Unused & Dead Classes (Zero Project-wide References)】 - (${report.deadClasses.length} classes):');
-        print('   (Classes declared in this scope that have 0 external references across the entire workspace)');
+        print(
+            '\n💀 【4. Unused & Dead Classes (Zero Project-wide References)】 - (${report.deadClasses.length} classes):');
+        print(
+            '   (Classes declared in this scope that have 0 external references across the entire workspace)');
 
         final byCategory = <String, List<UnusedClassResult>>{};
         for (final c in report.deadClasses) {
@@ -182,41 +213,51 @@ class CliRunner {
           print('\n   🔹 Category [${entry.key}] (${entry.value.length}):');
           for (final c in entry.value) {
             final typeTag = c.isPrivate ? '[Private]' : '[Public]';
-            print('      ❌ $typeTag ${c.name.padRight(32)} 📍 ${c.relPath}:${c.line}');
+            print(
+                '      ❌ $typeTag ${c.name.padRight(32)} 📍 ${c.relPath}:${c.line}');
           }
         }
       } else {
-        print('\n✅ Unused Classes: All classes in this scope are actively used across the project.');
+        print(
+            '\n✅ Unused Classes: All classes in this scope are actively used across the project.');
       }
 
       if (options.includeInternal) {
         if (report.internalOnlyClasses.isNotEmpty) {
-          print('\n⚠️ 【5. File-Internal Only Public Classes】 - (${report.internalOnlyClasses.length} classes):');
-          print('   (Public classes with 0 external references, used only within their declaring file)');
+          print(
+              '\n⚠️ 【5. File-Internal Only Public Classes】 - (${report.internalOnlyClasses.length} classes):');
+          print(
+              '   (Public classes with 0 external references, used only within their declaring file)');
           for (final c in report.internalOnlyClasses) {
-            print('      🔸 ${c.name.padRight(32)} (Internal references: ${c.internalMatches}) 📍 ${c.relPath}:${c.line}');
+            print(
+                '      🔸 ${c.name.padRight(32)} (Internal references: ${c.internalMatches}) 📍 ${c.relPath}:${c.line}');
           }
         }
       } else if (report.internalOnlyClasses.isNotEmpty) {
-        print('\n💡 Note: Found ${report.internalOnlyClasses.length} public classes used internally only. To display them, re-run with --include-internal');
+        print(
+            '\n💡 Note: Found ${report.internalOnlyClasses.length} public classes used internally only. To display them, re-run with --include-internal');
       }
     }
 
     print('\n${'=' * 78}');
     print('📊 FINAL AUDIT SUMMARY:');
-    print('   - Fully commented-out files:          ${report.fullyCommentedFiles.length}');
+    print(
+        '   - Fully commented-out files:          ${report.fullyCommentedFiles.length}');
     for (final f in report.fullyCommentedFiles) {
       print('      ↳ ${f.file}');
     }
-    print('   - Heavily commented files:            ${report.highRatioFiles.length}');
+    print(
+        '   - Heavily commented files:            ${report.highRatioFiles.length}');
     for (final f in report.highRatioFiles) {
       print('      ↳ ${f.file}');
     }
-    print('   - Files with dead code blocks:        ${report.filesWithCommentBlocks.length}');
+    print(
+        '   - Files with dead code blocks:        ${report.filesWithCommentBlocks.length}');
     for (final f in report.filesWithCommentBlocks) {
       print('      ↳ ${f.file}');
     }
-    print('   - Dead classes (Zero usages):         ${report.deadClasses.length}');
+    print(
+        '   - Dead classes (Zero usages):         ${report.deadClasses.length}');
     if (report.deadClasses.isNotEmpty) {
       final deadByFile = <String, List<String>>{};
       for (final c in report.deadClasses) {
@@ -227,7 +268,8 @@ class CliRunner {
       }
     }
     if (options.runClassAnalysis) {
-      print('   - File-internal only classes:         ${report.internalOnlyClasses.length}');
+      print(
+          '   - File-internal only classes:         ${report.internalOnlyClasses.length}');
       if (options.includeInternal && report.internalOnlyClasses.isNotEmpty) {
         final internalByFile = <String, List<String>>{};
         for (final c in report.internalOnlyClasses) {
@@ -241,6 +283,7 @@ class CliRunner {
     print('${'=' * 78}\n');
   }
 
+  /// Extracts the target path or URL from the command-line arguments.
   static String? extractTargetArg(List<String> args) {
     for (int i = 0; i < args.length; i++) {
       final a = args[i];
@@ -248,7 +291,9 @@ class CliRunner {
       if (match != null) {
         final raw = match.group(1)!;
         final val = cleanInputPath(raw);
-        if (val.isNotEmpty) return val;
+        if (val.isNotEmpty) {
+          return val;
+        }
         if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
           return cleanInputPath(args[i + 1]);
         }
@@ -262,16 +307,21 @@ class CliRunner {
 
     for (int i = 0; i < args.length; i++) {
       final a = args[i];
-      if (a.startsWith('--')) continue;
+      if (a.startsWith('--')) {
+        continue;
+      }
       if (i > 0 &&
           (args[i - 1] == '--threshold' ||
               args[i - 1] == '--min-lines' ||
-              args[i - 1] == '--json')) continue;
+              args[i - 1] == '--json')) {
+        continue;
+      }
       return cleanInputPath(a);
     }
     return null;
   }
 
+  /// Prints the command-line usage and options reference.
   static void printHelp() {
     print('''
 ================================================================================

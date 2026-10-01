@@ -28,6 +28,7 @@ void main() {
   print('Files with dead blocks: ${report.filesWithCommentBlocks.length}');
 
   for (final deadClass in report.deadClasses) {
-    print('Dead class: ${deadClass.name} at ${deadClass.relPath}:${deadClass.line}');
+    print(
+        'Dead class: ${deadClass.name} at ${deadClass.relPath}:${deadClass.line}');
   }
 }
