@@ -1,3 +1,7 @@
+## 1.3.1
+
+- Improved TODO comment scanner to capture all `TODO` tags across all comments, documentation comments (`///`), and inline notes, matching the Dart analyzer's `dart(todo)` diagnostic behavior in IDEs.
+
 ## 1.3.0
 
 - Added comprehensive all-in-one default inspection covering 13 code quality points without requiring extra flags.
