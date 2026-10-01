@@ -443,40 +443,21 @@ class UnusedCodeAuditor {
           continue;
         }
 
-        // Dartdoc comments (///) are documentation, not pending TODO directives
-        if (trimmed.startsWith('///')) {
-          continue;
-        }
-
-        String? todoText;
+        String? commentText;
+        int commentOffset = 0;
 
         if (inBlockComment) {
-          final blockMatch =
-              RegExp(r'^\*?\s*TODO\b:?\s*(.*)', caseSensitive: false)
-                  .firstMatch(trimmed);
-          if (blockMatch != null) {
-            todoText = blockMatch.group(1)?.trim();
-          }
+          commentText = line;
+          commentOffset = 0;
           if (trimmed.contains('*/')) {
             inBlockComment = false;
           }
         } else if (trimmed.startsWith('/*')) {
-          final startBlockMatch =
-              RegExp(r'^/\*\s*TODO\b:?\s*(.*)', caseSensitive: false)
-                  .firstMatch(trimmed);
-          if (startBlockMatch != null) {
-            todoText = startBlockMatch.group(1)?.trim();
-          }
+          commentText = line;
+          commentOffset = 0;
           if (!trimmed.contains('*/') ||
               trimmed.indexOf('*/') < trimmed.indexOf('/*') + 2) {
             inBlockComment = true;
-          }
-        } else if (trimmed.startsWith('//')) {
-          final lineMatch =
-              RegExp(r'^//\s*TODO\b:?\s*(.*)', caseSensitive: false)
-                  .firstMatch(trimmed);
-          if (lineMatch != null) {
-            todoText = lineMatch.group(1)?.trim();
           }
         } else if (line.contains('//')) {
           final idx = line.indexOf('//');
@@ -484,33 +465,33 @@ class UnusedCodeAuditor {
           final singleQuotes = "'".allMatches(before).length;
           final doubleQuotes = '"'.allMatches(before).length;
           if (singleQuotes % 2 == 0 && doubleQuotes % 2 == 0) {
-            final after = line.substring(idx).trim();
-            final inlineMatch =
-                RegExp(r'^//\s*TODO\b:?\s*(.*)', caseSensitive: false)
-                    .firstMatch(after);
-            if (inlineMatch != null) {
-              todoText = inlineMatch.group(1)?.trim();
-            }
+            commentText = line.substring(idx + 2);
+            commentOffset = idx + 2;
           }
         }
 
-        if (todoText != null) {
-          var msg = todoText;
-          if (msg.endsWith('*/')) {
-            msg = msg.substring(0, msg.length - 2).trim();
+        if (commentText != null) {
+          final match = RegExp(r'\bTODO\b:?\s*(.*)', caseSensitive: false)
+              .firstMatch(commentText);
+          if (match != null) {
+            var msg = match.group(0)?.trim() ?? '';
+            if (msg.endsWith('*/')) {
+              msg = msg.substring(0, msg.length - 2).trim();
+            }
+            if (msg.isEmpty) {
+              msg = 'TODO';
+            }
+            final col = commentOffset + match.start + 1;
+            final relPath = getRelativePath(file.path, rootPath);
+            todos.add(TodoItemResult(
+              file: relPath,
+              absolutePath: file.path,
+              fileUri: toFileUri(file.path, line: lineNum, column: col),
+              line: lineNum,
+              message: msg,
+              rawLine: line.trim(),
+            ));
           }
-          if (msg.isEmpty) {
-            msg = '(No description provided)';
-          }
-          final relPath = getRelativePath(file.path, rootPath);
-          todos.add(TodoItemResult(
-            file: relPath,
-            absolutePath: file.path,
-            fileUri: toFileUri(file.path, line: lineNum),
-            line: lineNum,
-            message: msg,
-            rawLine: line.trim(),
-          ));
         }
       }
     }
