@@ -285,7 +285,7 @@ class CliRunner {
             '\n📋 【6. TODO Comments & Pending Tasks】 - (${report.todos.length} items):');
         for (final t in report.todos) {
           print(
-              '   📝 [L${t.line.toString().padRight(4)}] ${t.file} ➜ ${t.message}');
+              '   📝 [L${t.line.toString().padRight(4)}] ${t.file}:${t.line} ➜ ${t.message}');
         }
       } else {
         print('\n✅ TODO Tasks: No pending TODO comments found in this scope.');
