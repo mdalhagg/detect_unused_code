@@ -1,3 +1,7 @@
+## 1.3.2
+
+- Appended line number directly to the file path in the TODO console report (e.g. `path/to/file.dart:line`) enabling instant clickability in IDE terminals.
+
 ## 1.3.1
 
 - Improved TODO comment scanner to capture all `TODO` tags across all comments, documentation comments (`///`), and inline notes, matching the Dart analyzer's `dart(todo)` diagnostic behavior in IDEs.
