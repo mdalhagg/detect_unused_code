@@ -1,0 +1,6 @@
+include: package:lints/recommended.yaml
+
+linter:
+  rules:
+    - curly_braces_in_flow_control_structures
+    - public_member_api_docs
