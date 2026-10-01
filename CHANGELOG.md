@@ -1,4 +1,4 @@
-## 1.1.1
+## 1.2.0
 
 - Added comprehensive dartdoc documentation comments across 100% of public API elements (classes, constructors, methods, and properties).
 - Enclosed flow control statements in curly braces across all files to conform with `curly_braces_in_flow_control_structures` lint.
