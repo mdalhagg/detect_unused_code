@@ -15,11 +15,15 @@ class RestoreResult {
   /// The list of file paths that were restored.
   final List<String> restoredFiles;
 
+  /// Whether the backup snapshot directory was deleted after restoration.
+  final bool snapshotDeleted;
+
   /// Creates a new [RestoreResult].
   RestoreResult({
     required this.success,
     required this.message,
     this.restoredFiles = const [],
+    this.snapshotDeleted = false,
   });
 }
 
@@ -48,6 +52,17 @@ class BackupManager {
             mode: FileMode.append,
           );
         }
+      }
+      // Exclude everything in .detect_unused from the Dart analyzer
+      final base = backupBaseDir;
+      final detectUnusedDir = base.parent;
+      if (!detectUnusedDir.existsSync()) {
+        detectUnusedDir.createSync(recursive: true);
+      }
+      final excludeOptions =
+          File('${detectUnusedDir.path}/analysis_options.yaml');
+      if (!excludeOptions.existsSync()) {
+        excludeOptions.writeAsStringSync('analyzer:\n  exclude:\n    - "**"\n');
       }
     } catch (_) {}
   }
@@ -221,7 +236,10 @@ class BackupManager {
   }
 
   /// Restores all files in backup [id] back to their original state.
-  RestoreResult restoreBackup(int id) {
+  ///
+  /// If [deleteAfterRestore] is true, permanently deletes the backup snapshot folder
+  /// after successful restoration to save disk space.
+  RestoreResult restoreBackup(int id, {bool deleteAfterRestore = true}) {
     final manifest = getBackup(id);
     if (manifest == null) {
       return RestoreResult(
@@ -253,11 +271,23 @@ class BackupManager {
         }
       }
 
+      // Automatically clean up the backup folder after successful restoration to save disk space
+      bool deleted = false;
+      if (deleteAfterRestore) {
+        try {
+          if (backupDir.existsSync()) {
+            backupDir.deleteSync(recursive: true);
+            deleted = true;
+          }
+        } catch (_) {}
+      }
+
       return RestoreResult(
         success: true,
         message:
             'Backup #$id restored successfully (${restored.length} files restored).',
         restoredFiles: restored,
+        snapshotDeleted: deleted,
       );
     } catch (e) {
       return RestoreResult(
@@ -269,7 +299,9 @@ class BackupManager {
   }
 
   /// Restores the most recent backup snapshot.
-  RestoreResult restoreLatest() {
+  ///
+  /// If [deleteAfterRestore] is true, deletes the backup folder after restoring.
+  RestoreResult restoreLatest({bool deleteAfterRestore = true}) {
     final latest = getLatestBackup();
     if (latest == null) {
       return RestoreResult(
@@ -277,6 +309,42 @@ class BackupManager {
         message: 'No backups found to restore in ${backupBaseDir.path}.',
       );
     }
-    return restoreBackup(latest.id);
+    return restoreBackup(latest.id, deleteAfterRestore: deleteAfterRestore);
+  }
+
+  /// Permanently deletes a backup snapshot by its integer [id] to free disk space.
+  bool deleteBackup(int id) {
+    final manifest = getBackup(id);
+    if (manifest == null) {
+      return false;
+    }
+    final backupDir =
+        Directory('${backupBaseDir.path}/${manifest.backupDirName}');
+    if (backupDir.existsSync()) {
+      try {
+        backupDir.deleteSync(recursive: true);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /// Deletes all backup snapshots in the project to reclaim disk space.
+  int deleteAllBackups() {
+    final base = backupBaseDir;
+    if (!base.existsSync()) {
+      return 0;
+    }
+    int count = 0;
+    try {
+      final dirs = base.listSync().whereType<Directory>();
+      for (final dir in dirs) {
+        dir.deleteSync(recursive: true);
+        count++;
+      }
+    } catch (_) {}
+    return count;
   }
 }

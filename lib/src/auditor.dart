@@ -552,6 +552,16 @@ class UnusedCodeAuditor {
 
         final location = item['location'] as Map<String, dynamic>?;
         final filePath = (location?['file'] ?? '').toString();
+
+        final normPath = filePath.replaceAll(r'\', '/').toLowerCase();
+        if (normPath.contains('/.detect_unused') ||
+            normPath.contains('/backups') ||
+            normPath.contains('/.backups') ||
+            normPath.endsWith('/backup') ||
+            normPath.contains('/backup/')) {
+          continue;
+        }
+
         final range = location?['range'] as Map<String, dynamic>?;
         final start = range?['start'] as Map<String, dynamic>?;
         final line = (start?['line'] as num?)?.toInt() ?? 1;
