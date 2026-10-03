@@ -4,6 +4,97 @@ import 'dart:io';
 import '../backup/backup_manager.dart';
 import '../backup/backup_manifest.dart';
 import '../models.dart';
+import '../utils.dart';
+
+/// Represents a compiler or analyzer diagnostic issue found during post-cleanup health checks.
+class HealthIssue {
+  /// Severity of the diagnostic (e.g. ERROR, WARNING).
+  final String severity;
+
+  /// Dart analyzer diagnostic code name (e.g. `uri_does_not_exist`).
+  final String code;
+
+  /// Problem description message.
+  final String message;
+
+  /// Absolute file path where the issue is located.
+  final String file;
+
+  /// 1-based line number.
+  final int line;
+
+  /// 1-based column number.
+  final int column;
+
+  /// The target URI extracted from `uri_does_not_exist`, if available.
+  final String? uri;
+
+  /// Creates a new [HealthIssue].
+  HealthIssue({
+    required this.severity,
+    required this.code,
+    required this.message,
+    required this.file,
+    required this.line,
+    required this.column,
+    this.uri,
+  });
+
+  /// Whether this issue is an invalid or dangling URI reference to a deleted/missing file.
+  bool get isDanglingUri =>
+      code == 'uri_does_not_exist' ||
+      message.contains("Target of URI doesn't exist");
+
+  @override
+  String toString() => '$file:$line - $message';
+}
+
+/// Comprehensive health check result after running Dart analysis.
+class HealthCheckResult {
+  /// List of compiler errors detected.
+  final List<HealthIssue> errors;
+
+  /// List of analyzer warnings detected.
+  final List<HealthIssue> warnings;
+
+  /// Creates a new [HealthCheckResult].
+  HealthCheckResult({
+    this.errors = const [],
+    this.warnings = const [],
+  });
+
+  /// Whether any compilation errors are present.
+  bool get hasErrors => errors.isNotEmpty;
+
+  /// Whether any errors are caused by dangling/missing URI directives.
+  bool get hasDanglingUris => errors.any((e) => e.isDanglingUri);
+
+  /// String formatted error messages.
+  List<String> get errorMessages => errors.map((e) => e.toString()).toList();
+}
+
+/// Describes a dangling directive (import/export/part) that was safely removed.
+class RemovedDirectiveItem {
+  /// Project-relative path of the modified file.
+  final String file;
+
+  /// Line number where the directive was removed.
+  final int line;
+
+  /// The text snippet of the removed directive.
+  final String directive;
+
+  /// Target missing URI that triggered removal.
+  final String targetUri;
+
+  /// Creates a new [RemovedDirectiveItem].
+  RemovedDirectiveItem({
+    required this.file,
+    required this.line,
+    required this.directive,
+    required this.targetUri,
+  });
+}
 
 /// Summary report produced after executing a code cleanup operation.
 class CleanResult {
@@ -714,10 +805,125 @@ class CodeCleaner {
     );
   }
 
+  /// Surgically removes dangling import/export/part directives referencing missing or deleted files.
+  List<RemovedDirectiveItem> cleanDanglingUriDirectives(
+    List<HealthIssue> issues, {
+    BackupManifest? backup,
+  }) {
+    final dangling = issues.where((i) => i.isDanglingUri).toList();
+    if (dangling.isEmpty) {
+      return [];
+    }
+
+    final byFile = <String, List<HealthIssue>>{};
+    for (final issue in dangling) {
+      byFile.putIfAbsent(issue.file, () => []).add(issue);
+    }
+
+    // Ensure all target files are backed up first
+    if (backup != null) {
+      final filesToBackup = byFile.keys
+          .map((p) => resolveFile(p))
+          .where((f) => f.existsSync())
+          .toList();
+      backupManager.appendToBackup(backup, filesToBackup);
+    }
+
+    final removedItems = <RemovedDirectiveItem>[];
+
+    for (final entry in byFile.entries) {
+      final filePath = entry.key;
+      final fileIssues = entry.value;
+      final file = resolveFile(filePath);
+      if (!file.existsSync()) {
+        continue;
+      }
+
+      String content;
+      try {
+        content = file.readAsStringSync();
+      } catch (_) {
+        continue;
+      }
+
+      final lines = content.split(RegExp(r'\r?\n'));
+
+      // Sort by line in descending order (bottom to top) to maintain stable indices
+      fileIssues.sort((a, b) => b.line.compareTo(a.line));
+
+      for (final issue in fileIssues) {
+        final lineIdx = issue.line - 1;
+        if (lineIdx < 0 || lineIdx >= lines.length) {
+          continue;
+        }
+
+        // Find the start of the directive (import/export/part)
+        int startIdx = lineIdx;
+        while (startIdx > 0 &&
+            !RegExp(r'^\s*(?:import|export|part)\b')
+                .hasMatch(lines[startIdx])) {
+          if (lineIdx - startIdx > 15) {
+            break;
+          }
+          startIdx--;
+        }
+
+        if (!RegExp(r'^\s*(?:import|export|part)\b')
+            .hasMatch(lines[startIdx])) {
+          startIdx = lineIdx;
+        }
+
+        // Find the end of the directive (semicolon ';')
+        int endIdx = startIdx;
+        while (endIdx < lines.length && !lines[endIdx].contains(';')) {
+          endIdx++;
+          if (endIdx - startIdx > 30) {
+            break;
+          }
+        }
+
+        if (endIdx >= lines.length) {
+          endIdx = startIdx;
+        }
+
+        final removedText =
+            lines.sublist(startIdx, endIdx + 1).join('\n').trim();
+
+        // Verify it contains import/export/part or the target URI
+        final isDirective =
+            RegExp(r'^(?:import|export|part)\b').hasMatch(removedText);
+        final matchesUri =
+            issue.uri != null && removedText.contains(issue.uri!);
+
+        if (isDirective || matchesUri) {
+          lines.removeRange(startIdx, endIdx + 1);
+
+          // Clean duplicate empty lines if left
+          if (startIdx < lines.length && lines[startIdx].trim().isEmpty) {
+            if (startIdx > 0 && lines[startIdx - 1].trim().isEmpty) {
+              lines.removeAt(startIdx);
+            }
+          }
+
+          removedItems.add(RemovedDirectiveItem(
+            file: getRelativePath(file.path, projectRoot.path),
+            line: issue.line,
+            directive: removedText.split('\n').first.trim(),
+            targetUri: issue.uri ?? '',
+          ));
+        }
+      }
+
+      file.writeAsStringSync(lines.join('\n'));
+    }
+
+    return removedItems;
+  }
+
   /// Runs post-cleanup Dart compilation/analyzer verification.
   ///
-  /// Returns a list of compiler error messages found, or an empty list if clean.
-  List<String> verifyProjectHealth() {
+  /// Returns a [HealthCheckResult] containing detected compiler errors and warnings.
+  HealthCheckResult verifyProjectHealth() {
     try {
       final result = Process.runSync(
         'dart',
@@ -728,36 +934,69 @@ class CodeCleaner {
 
       final stdoutStr = result.stdout as String? ?? '';
       if (stdoutStr.trim().isEmpty) {
-        return [];
+        return HealthCheckResult();
       }
 
       final jsonStart = stdoutStr.indexOf('{');
       final jsonEnd = stdoutStr.lastIndexOf('}');
       if (jsonStart == -1 || jsonEnd == -1 || jsonEnd < jsonStart) {
-        return [];
+        return HealthCheckResult();
       }
 
       final jsonContent = stdoutStr.substring(jsonStart, jsonEnd + 1);
       final decoded = jsonDecode(jsonContent) as Map<String, dynamic>;
       final diagnostics = decoded['diagnostics'] as List<dynamic>? ?? [];
 
-      final errors = <String>[];
+      final errors = <HealthIssue>[];
+      final warnings = <HealthIssue>[];
+      final uriRegex = RegExp(r"Target of URI doesn't exist:\s*'([^']+)'");
+
       for (final item in diagnostics) {
         if (item is! Map<String, dynamic>) {
           continue;
         }
         final severity = (item['severity'] ?? '').toString().toUpperCase();
+        final code = (item['code'] ?? '').toString();
+        final msg = item['problemMessage']?.toString() ?? 'Error';
+        final loc = item['location'] as Map<String, dynamic>?;
+        final file = loc?['file']?.toString() ?? '';
+        final line = (loc?['range']?['start']?['line'] as num?)?.toInt() ?? 1;
+        final col = (loc?['range']?['start']?['column'] as num?)?.toInt() ?? 1;
+
+        String? extractedUri;
+        final match = uriRegex.firstMatch(msg);
+        if (match != null) {
+          extractedUri = match.group(1);
+        }
+
+        final issue = HealthIssue(
+          severity: severity,
+          code: code,
+          message: msg,
+          file: file,
+          line: line,
+          column: col,
+          uri: extractedUri,
+        );
+
         if (severity == 'ERROR') {
-          final msg = item['problemMessage']?.toString() ?? 'Error';
-          final loc = item['location'] as Map<String, dynamic>?;
-          final file = loc?['file']?.toString() ?? '';
-          final line = (loc?['range']?['start']?['line'] as num?)?.toInt() ?? 1;
-          errors.add('$file:$line - $msg');
+          errors.add(issue);
+        } else if (severity == 'WARNING') {
+          warnings.add(issue);
         }
       }
-      return errors;
+      return HealthCheckResult(errors: errors, warnings: warnings);
     } catch (e) {
-      return ['Verification check failed to execute: $e'];
+      return HealthCheckResult(errors: [
+        HealthIssue(
+          severity: 'ERROR',
+          code: 'verification_failed',
+          message: 'Verification check failed to execute: $e',
+          file: '',
+          line: 1,
+          column: 1,
+        )
+      ]);
     }
   }
 

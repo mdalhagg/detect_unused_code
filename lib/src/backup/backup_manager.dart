@@ -136,6 +136,47 @@ class BackupManager {
     return manifest;
   }
 
+  /// Adds additional files to an existing backup manifest snapshot before they are modified.
+  void appendToBackup(
+    BackupManifest manifest,
+    Iterable<File> additionalFiles,
+  ) {
+    final backupDir =
+        Directory('${backupBaseDir.path}/${manifest.backupDirName}');
+    if (!backupDir.existsSync()) {
+      return;
+    }
+
+    final existingSet =
+        manifest.files.map((e) => canonicalizePath(e.originalPath)).toSet();
+
+    for (final file in additionalFiles) {
+      if (!file.existsSync()) {
+        continue;
+      }
+      final canon = canonicalizePath(file.path);
+      if (existingSet.contains(canon)) {
+        continue;
+      }
+      existingSet.add(canon);
+
+      final rel = getRelativePath(file.path, projectRoot.path);
+      final destFile = File('${backupDir.path}/files/$rel');
+      destFile.parent.createSync(recursive: true);
+      file.copySync(destFile.path);
+
+      manifest.files.add(BackupFileEntry(
+        originalPath: file.path,
+        relativePath: rel,
+        backupRelativePath: 'files/$rel',
+        isDeleted: false,
+      ));
+    }
+
+    final manifestFile = File('${backupDir.path}/manifest.json');
+    manifestFile.writeAsStringSync(manifest.toPrettyJson());
+  }
+
   /// Lists all available backup snapshots sorted by ID in descending order (newest first).
   List<BackupManifest> listBackups() {
     final base = backupBaseDir;

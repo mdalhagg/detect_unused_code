@@ -519,12 +519,49 @@ class CliRunner {
         '--------------------------------------------------------------------------------');
 
     stdout.write('🔍 Verifying project compilation and analyzer health...');
-    final verificationIssues = cleaner.verifyProjectHealth();
-    if (verificationIssues.isNotEmpty) {
+    var health = cleaner.verifyProjectHealth();
+
+    // Auto-resolve dangling imports/exports referencing deleted files
+    if (health.hasDanglingUris) {
+      stdout.writeln(' ⚠️ Dangling references detected!\n');
+      print(
+          '================================================================================');
+      print('🧹 AUTO-RESOLVING DANGLING EXPORTS & IMPORTS');
+      print(
+          '================================================================================');
+      print('⚠️ Detected export/import directives referencing deleted files:');
+      for (final issue in health.errors.where((e) => e.isDanglingUri)) {
+        final relFile = getRelativePath(issue.file, projectRoot.path);
+        print(
+            '   ⚠️ [L${issue.line.toString().padRight(4)}] $relFile ➜ ${issue.message}');
+      }
+
+      print(
+          '\n⚙️ Automatically removing dangling directives from barrel & source files...');
+      final removed = cleaner.cleanDanglingUriDirectives(
+        health.errors,
+        backup: cleanResult.backup,
+      );
+
+      for (final item in removed) {
+        print(
+            '   ✂️ [L${item.line.toString().padRight(4)}] ${item.file} ➜ Removed: ${item.directive}');
+      }
+      print('✅ Successfully removed ${removed.length} dangling directive(s).');
+      print(
+          '--------------------------------------------------------------------------------');
+
+      // Re-verify compilation health after auto-fixing dangling directives
+      stdout
+          .write('🔍 Re-verifying project compilation and analyzer health...');
+      health = cleaner.verifyProjectHealth();
+    }
+
+    if (health.hasErrors) {
       stdout.writeln(' ❌ Issues detected!\n');
       print('⚠️ [WARNING] Compiler errors detected after cleanup:');
-      for (final err in verificationIssues) {
-        print('  - $err');
+      for (final err in health.errors) {
+        print('  - ${err.file}:${err.line} - ${err.message}');
       }
       if (cleanResult.backup != null) {
         stdout.write(
@@ -545,7 +582,7 @@ class CliRunner {
         }
       }
     } else {
-      stdout.writeln(' ✅ Healthy (0 compiler errors)!');
+      stdout.writeln(' ✅ Healthy (0 compiler errors)! All clean!');
     }
 
     return 0;

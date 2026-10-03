@@ -8,7 +8,13 @@ library detect_unused_code;
 export 'src/auditor.dart' show UnusedCodeAuditor, AuditorProgressCallback;
 export 'src/backup/backup_manager.dart' show BackupManager, RestoreResult;
 export 'src/backup/backup_manifest.dart' show BackupManifest, BackupFileEntry;
-export 'src/cleaners/code_cleaner.dart' show CodeCleaner, CleanResult;
+export 'src/cleaners/code_cleaner.dart'
+    show
+        CodeCleaner,
+        CleanResult,
+        HealthIssue,
+        HealthCheckResult,
+        RemovedDirectiveItem;
 export 'src/cli_runner.dart' show CliRunner;
 export 'src/models.dart'
     show
