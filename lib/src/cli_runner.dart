@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'auditor.dart';
+import 'backup/backup_manager.dart';
+import 'cleaners/code_cleaner.dart';
 import 'models.dart';
 import 'utils.dart';
 
-/// Command-line interface runner for auditing unused code.
+/// Command-line interface runner for auditing and cleaning unused code.
 class CliRunner {
   /// The list of raw command-line arguments passed to the runner.
   final List<String> args;
@@ -13,15 +15,132 @@ class CliRunner {
   /// Creates a new [CliRunner] with the provided command-line arguments.
   CliRunner(this.args);
 
-  /// Executes the audit based on the parsed CLI arguments.
+  /// Executes the audit or cleanup based on the parsed CLI arguments.
   ///
-  /// Returns exit code `0` if no dead code was detected, or `1` if issues were found.
+  /// Returns exit code `0` on success or clean project, or `1` if issues or errors were found.
   int run() {
     if (args.contains('--help') || args.contains('-h')) {
       printHelp();
       return 0;
     }
 
+    final projectRoot = findProjectOrWorkspaceRoot();
+
+    // 1. Backups listing
+    if (args.contains('--backups') || args.contains('--list-backups')) {
+      return _listBackups(projectRoot);
+    }
+
+    // 2. Restore latest backup
+    if (args.contains('--restore-latest')) {
+      return _restoreLatest(projectRoot);
+    }
+
+    // 3. Restore specific backup by ID
+    for (int i = 0; i < args.length; i++) {
+      final a = args[i];
+      if (a == '--restore') {
+        if (i + 1 < args.length) {
+          final id = int.tryParse(args[i + 1]);
+          if (id != null) {
+            return _restoreBackup(projectRoot, id);
+          }
+        }
+        print(
+            '❌ Please specify a valid backup ID: detect_unused --restore <id>');
+        return 1;
+      } else if (a.startsWith('--restore=')) {
+        final id = int.tryParse(a.substring('--restore='.length));
+        if (id != null) {
+          return _restoreBackup(projectRoot, id);
+        }
+        print(
+            '❌ Please specify a valid backup ID: detect_unused --restore=<id>');
+        return 1;
+      }
+    }
+
+    // 4. Cleanup flags
+    final cleanAll = args.contains('--clean-all') || args.contains('--clean');
+    final cleanCommented = args.contains('--clean-commented-files') ||
+        args.contains('--clean-commented');
+    final cleanDeadBlocks = args.contains('--clean-dead-blocks');
+    final cleanDeadClasses = args.contains('--clean-dead-classes');
+    final privatizeInternal = args.contains('--privatize-internal');
+    final cleanTodos =
+        args.contains('--clean-todos') || args.contains('--clean-todo');
+    final cleanUnusedImports = args.contains('--clean-unused-imports') ||
+        args.contains('--clean-imports');
+    final cleanDeadCode = args.contains('--clean-dead-code');
+
+    final isCleaning = cleanAll ||
+        cleanCommented ||
+        cleanDeadBlocks ||
+        cleanDeadClasses ||
+        privatizeInternal ||
+        cleanTodos ||
+        cleanUnusedImports ||
+        cleanDeadCode;
+
+    final dryRun = args.contains('--dry-run');
+    final isYes = args.contains('--yes') || args.contains('-y');
+    final noBackup = args.contains('--no-backup');
+    final verbose = args.contains('--verbose') || args.contains('-v');
+
+    int commentThreshold = 60;
+    final thresholdIdx = args.indexOf('--threshold');
+    if (thresholdIdx != -1 && thresholdIdx + 1 < args.length) {
+      final p = int.tryParse(args[thresholdIdx + 1]);
+      if (p != null && p > 0 && p <= 100) {
+        commentThreshold = p;
+      }
+    }
+
+    int minBlockLines = 15;
+    final minLinesIdx = args.indexOf('--min-lines');
+    if (minLinesIdx != -1 && minLinesIdx + 1 < args.length) {
+      final p = int.tryParse(args[minLinesIdx + 1]);
+      if (p != null && p > 0) {
+        minBlockLines = p;
+      }
+    }
+
+    final targetArg = extractTargetArg(args);
+
+    void updateProgress(int percent, String label) {
+      final clamped = percent.clamp(0, 100);
+      const barWidth = 28;
+      final filled = ((clamped / 100) * barWidth).round();
+      final empty = barWidth - filled;
+      final bar = '${'█' * filled}${'░' * (empty > 0 ? empty : 0)}';
+      final text =
+          '\r⏳ Loading & Analyzing: [$bar] ${clamped.toString().padLeft(3)}% | $label';
+      stdout.write(text);
+    }
+
+    if (isCleaning) {
+      return _executeCleanup(
+        projectRoot: projectRoot,
+        targetArg: targetArg,
+        commentThreshold: commentThreshold,
+        minBlockLines: minBlockLines,
+        verbose: verbose,
+        cleanAll: cleanAll,
+        cleanCommented: cleanCommented,
+        cleanDeadBlocks: cleanDeadBlocks,
+        cleanDeadClasses: cleanDeadClasses,
+        privatizeInternal: privatizeInternal,
+        cleanTodos: cleanTodos,
+        cleanUnusedImports: cleanUnusedImports,
+        cleanDeadCode: cleanDeadCode,
+        dryRun: dryRun,
+        isYes: isYes,
+        noBackup: noBackup,
+        onProgress: updateProgress,
+      );
+    }
+
+    // Normal Audit Execution
     bool isJson = false;
     String jsonFileName = 'detect_unused_code.json';
 
@@ -59,28 +178,6 @@ class CliRunner {
         args.contains('--no-diagnostics') || args.contains('--no-analyzer');
     final noInternal = args.contains('--no-internal');
     final includeInternal = !noInternal;
-    final verbose = args.contains('--verbose') || args.contains('-v');
-
-    int commentThreshold = 60;
-    final thresholdIdx = args.indexOf('--threshold');
-    if (thresholdIdx != -1 && thresholdIdx + 1 < args.length) {
-      final p = int.tryParse(args[thresholdIdx + 1]);
-      if (p != null && p > 0 && p <= 100) {
-        commentThreshold = p;
-      }
-    }
-
-    int minBlockLines = 15;
-    final minLinesIdx = args.indexOf('--min-lines');
-    if (minLinesIdx != -1 && minLinesIdx + 1 < args.length) {
-      final p = int.tryParse(args[minLinesIdx + 1]);
-      if (p != null && p > 0) {
-        minBlockLines = p;
-      }
-    }
-
-    final targetArg = extractTargetArg(args);
-    final projectRoot = findProjectOrWorkspaceRoot();
 
     final runClassAnalysis = onlyTodos || onlyDiagnostics
         ? false
@@ -117,17 +214,6 @@ class CliRunner {
       projectRoot: projectRoot,
       options: options,
     );
-
-    void updateProgress(int percent, String label) {
-      final clamped = percent.clamp(0, 100);
-      const barWidth = 28;
-      final filled = ((clamped / 100) * barWidth).round();
-      final empty = barWidth - filled;
-      final bar = '${'█' * filled}${'░' * (empty > 0 ? empty : 0)}';
-      final text =
-          '\r⏳ Loading & Analyzing: [$bar] ${clamped.toString().padLeft(3)}% | $label';
-      stdout.write(text);
-    }
 
     final report = auditor.run(onProgress: updateProgress);
     stdout.writeln('\n');
@@ -175,6 +261,333 @@ class CliRunner {
     return hasIssues ? 1 : 0;
   }
 
+  int _listBackups(Directory projectRoot) {
+    final manager = BackupManager(projectRoot);
+    final backups = manager.listBackups();
+    if (backups.isEmpty) {
+      print(
+          '================================================================================');
+      print('📦 No backups found in .detect_unused/backups/.');
+      print(
+          '================================================================================');
+      return 0;
+    }
+    print(
+        '================================================================================');
+    print(
+        '📦 DETECT_UNUSED_CODE: SNAPSHOT BACKUPS (${backups.length} available)');
+    print(
+        '================================================================================');
+    for (final b in backups) {
+      print('  ID: #${b.id.toString().padRight(4)} | ${b.formattedDate}');
+      print('  Action:        ${b.action}');
+      print(
+          '  Files Stored:  ${b.files.length} (${b.files.where((f) => f.isDeleted).length} deleted, ${b.files.where((f) => !f.isDeleted).length} modified)');
+      print('  Snapshot Dir:  ${b.backupDirName}');
+      print('  To restore:    detect_unused --restore ${b.id}');
+      print(
+          '--------------------------------------------------------------------------------');
+    }
+    return 0;
+  }
+
+  int _restoreLatest(Directory projectRoot) {
+    final manager = BackupManager(projectRoot);
+    final latest = manager.getLatestBackup();
+    if (latest == null) {
+      print('❌ No backups found to restore in .detect_unused/backups/.');
+      return 1;
+    }
+    return _restoreBackup(projectRoot, latest.id);
+  }
+
+  int _restoreBackup(Directory projectRoot, int id) {
+    final manager = BackupManager(projectRoot);
+    final manifest = manager.getBackup(id);
+    if (manifest == null) {
+      print(
+          '❌ Backup #$id not found. Use "detect_unused --backups" to view all available backups.');
+      return 1;
+    }
+
+    stdout.write(
+        '⚠️ Restore backup #$id ("${manifest.action}")? This will overwrite active project files. [y/N]: ');
+    final input = stdin.readLineSync()?.trim().toLowerCase();
+    if (input != 'y' && input != 'yes') {
+      print('❌ Restore cancelled by user.');
+      return 0;
+    }
+
+    final result = manager.restoreBackup(id);
+    if (result.success) {
+      print(
+          '\n================================================================================');
+      print('🔄 RESTORE COMPLETED SUCCESSFULLY (Backup #$id)');
+      print(
+          '================================================================================');
+      print('  ✅ Files Restored/Recreated: ${result.restoredFiles.length}');
+      print(
+          '  📁 Project state has been restored to: ${manifest.formattedDate}');
+      print(
+          '================================================================================');
+      return 0;
+    } else {
+      print('❌ Restore failed: ${result.message}');
+      return 1;
+    }
+  }
+
+  int _executeCleanup({
+    required Directory projectRoot,
+    required String? targetArg,
+    required int commentThreshold,
+    required int minBlockLines,
+    required bool verbose,
+    required bool cleanAll,
+    required bool cleanCommented,
+    required bool cleanDeadBlocks,
+    required bool cleanDeadClasses,
+    required bool privatizeInternal,
+    required bool cleanTodos,
+    required bool cleanUnusedImports,
+    required bool cleanDeadCode,
+    required bool dryRun,
+    required bool isYes,
+    required bool noBackup,
+    required AuditorProgressCallback onProgress,
+  }) {
+    final auditor = UnusedCodeAuditor(
+      projectRoot: projectRoot,
+      options: AuditorOptions(
+        targetPath: targetArg,
+        runClassAnalysis: cleanAll || cleanDeadClasses || privatizeInternal,
+        runCommentAnalysis: cleanAll || cleanCommented || cleanDeadBlocks,
+        includeInternal: cleanAll || privatizeInternal,
+        runTodoAnalysis: cleanAll || cleanTodos,
+        runDiagnostics: cleanAll || cleanUnusedImports || cleanDeadCode,
+        commentThreshold: commentThreshold,
+        minBlockLines: minBlockLines,
+        verbose: verbose,
+      ),
+    );
+
+    final report = auditor.run(onProgress: onProgress);
+    stdout.writeln('\n');
+
+    final filesToDelete = (cleanAll || cleanCommented)
+        ? report.fullyCommentedFiles
+        : <CommentedFileResult>[];
+    final blocksToClean = (cleanAll || cleanDeadBlocks)
+        ? report.filesWithCommentBlocks
+        : <CommentedFileResult>[];
+    final deadClassesToClean = (cleanAll || cleanDeadClasses)
+        ? report.deadClasses
+        : <UnusedClassResult>[];
+    final internalClassesToClean = (cleanAll || privatizeInternal)
+        ? report.internalOnlyClasses
+        : <UnusedClassResult>[];
+    final todosToClean =
+        (cleanAll || cleanTodos) ? report.todos : <TodoItemResult>[];
+    final importsToClean = (cleanAll || cleanUnusedImports)
+        ? report.unusedImports
+        : <DiagnosticIssueResult>[];
+    final deadCodeToClean = (cleanAll || cleanDeadCode)
+        ? report.deadCodeAndExpressions
+        : <DiagnosticIssueResult>[];
+
+    final totalTargets = filesToDelete.length +
+        blocksToClean.length +
+        deadClassesToClean.length +
+        internalClassesToClean.length +
+        todosToClean.length +
+        importsToClean.length +
+        deadCodeToClean.length;
+
+    if (totalTargets == 0) {
+      print(
+          '================================================================================');
+      print(
+          '✨ CLEANUP SUMMARY: Nothing to clean! All code is active and in top shape.');
+      print(
+          '================================================================================');
+      return 0;
+    }
+
+    print(
+        '================================================================================');
+    print('🧹 DETECT_UNUSED_CODE: PLANNED REMEDIATION');
+    print(
+        '================================================================================');
+    if (filesToDelete.isNotEmpty) {
+      print('  🗑️ Fully Commented Files to Delete (${filesToDelete.length}):');
+      for (final f in filesToDelete) {
+        print('     - ${f.file}');
+      }
+    }
+    if (blocksToClean.isNotEmpty) {
+      final totalBlocks =
+          blocksToClean.fold<int>(0, (sum, f) => sum + f.blocks.length);
+      print(
+          '  ✂️ Dead Comment Blocks to Remove ($totalBlocks blocks in ${blocksToClean.length} files):');
+      for (final f in blocksToClean) {
+        print('     - ${f.file} (${f.blocks.length} block(s))');
+      }
+    }
+    if (deadClassesToClean.isNotEmpty) {
+      print('  💀 Dead Classes to Remove (${deadClassesToClean.length}):');
+      for (final c in deadClassesToClean) {
+        print('     - ${c.name} in ${c.relPath}');
+      }
+    }
+    if (internalClassesToClean.isNotEmpty) {
+      print(
+          '  🔒 File-Internal Classes to Privatize (${internalClassesToClean.length}):');
+      for (final c in internalClassesToClean) {
+        print('     - ${c.name} -> _${c.name} in ${c.relPath}');
+      }
+    }
+    if (todosToClean.isNotEmpty) {
+      print('  📝 TODO Comments to Clean (${todosToClean.length}):');
+      for (final t in todosToClean.take(10)) {
+        print('     - ${t.file}:${t.line} - ${t.message}');
+      }
+      if (todosToClean.length > 10) {
+        print('     ... and ${todosToClean.length - 10} more');
+      }
+    }
+    if (importsToClean.isNotEmpty) {
+      print(
+          '  📦 Unused & Unnecessary Imports to Remove (${importsToClean.length}):');
+      for (final i in importsToClean) {
+        print('     - ${i.file}:${i.line} (${i.message})');
+      }
+    }
+    if (deadCodeToClean.isNotEmpty) {
+      print(
+          '  ⚡ Dead Code & Expressions to Remediate (${deadCodeToClean.length}):');
+      for (final d in deadCodeToClean) {
+        print('     - ${d.file}:${d.line} (${d.message})');
+      }
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+
+    if (dryRun) {
+      print(
+          '🔍 [DRY-RUN]: Simulation complete. No files on disk were modified.');
+      return 0;
+    }
+
+    if (!isYes) {
+      stdout.write(
+          '⚠️ Are you sure you want to proceed with this cleanup? [y/N]: ');
+      final input = stdin.readLineSync()?.trim().toLowerCase();
+      if (input != 'y' && input != 'yes') {
+        print('❌ Cleanup aborted by user. No files were modified.');
+        return 0;
+      }
+    }
+
+    final cleaner = CodeCleaner(projectRoot);
+    final cleanResult = cleaner.cleanAll(
+      commentedFiles: filesToDelete,
+      filesWithDeadBlocks: blocksToClean,
+      deadClasses: deadClassesToClean,
+      internalClasses: internalClassesToClean,
+      todos: todosToClean,
+      unusedImports: importsToClean,
+      deadCodeItems: deadCodeToClean,
+      dryRun: false,
+      createBackup: !noBackup,
+    );
+
+    print(
+        '\n================================================================================');
+    print('🎉 CLEANUP COMPLETED');
+    print(
+        '================================================================================');
+    print('  ✅ Files Deleted:    ${cleanResult.deletedFiles.length}');
+    print('  ✏️ Files Modified:   ${cleanResult.modifiedFiles.length}');
+    print('  🎯 Items Remediated: ${cleanResult.totalItemsCleaned}');
+    if (cleanResult.backup != null) {
+      print(
+          '  📦 Backup Snapshot:  #${cleanResult.backup!.id} (${cleanResult.backup!.backupDirName})');
+      print(
+          '     Restore command:  detect_unused --restore ${cleanResult.backup!.id}');
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+
+    stdout.write('🔍 Verifying project compilation and analyzer health...');
+    var health = cleaner.verifyProjectHealth();
+
+    // Auto-resolve dangling imports/exports referencing deleted files
+    if (health.hasDanglingUris) {
+      stdout.writeln(' ⚠️ Dangling references detected!\n');
+      print(
+          '================================================================================');
+      print('🧹 AUTO-RESOLVING DANGLING EXPORTS & IMPORTS');
+      print(
+          '================================================================================');
+      print('⚠️ Detected export/import directives referencing deleted files:');
+      for (final issue in health.errors.where((e) => e.isDanglingUri)) {
+        final relFile = getRelativePath(issue.file, projectRoot.path);
+        print(
+            '   ⚠️ [L${issue.line.toString().padRight(4)}] $relFile ➜ ${issue.message}');
+      }
+
+      print(
+          '\n⚙️ Automatically removing dangling directives from barrel & source files...');
+      final removed = cleaner.cleanDanglingUriDirectives(
+        health.errors,
+        backup: cleanResult.backup,
+      );
+
+      for (final item in removed) {
+        print(
+            '   ✂️ [L${item.line.toString().padRight(4)}] ${item.file} ➜ Removed: ${item.directive}');
+      }
+      print('✅ Successfully removed ${removed.length} dangling directive(s).');
+      print(
+          '--------------------------------------------------------------------------------');
+
+      // Re-verify compilation health after auto-fixing dangling directives
+      stdout
+          .write('🔍 Re-verifying project compilation and analyzer health...');
+      health = cleaner.verifyProjectHealth();
+    }
+
+    if (health.hasErrors) {
+      stdout.writeln(' ❌ Issues detected!\n');
+      print('⚠️ [WARNING] Compiler errors detected after cleanup:');
+      for (final err in health.errors) {
+        print('  - ${err.file}:${err.line} - ${err.message}');
+      }
+      if (cleanResult.backup != null) {
+        stdout.write(
+            '\n⚠️ Would you like to automatically rollback to Backup #${cleanResult.backup!.id}? [Y/n]: ');
+        final rbInput = stdin.readLineSync()?.trim().toLowerCase();
+        if (rbInput == null ||
+            rbInput.isEmpty ||
+            rbInput == 'y' ||
+            rbInput == 'yes') {
+          final rb =
+              cleaner.backupManager.restoreBackup(cleanResult.backup!.id);
+          if (rb.success) {
+            print('🔄 Project successfully restored to pre-cleanup state!');
+          } else {
+            print('❌ Restore failed: ${rb.message}');
+          }
+          return 1;
+        }
+      }
+    } else {
+      stdout.writeln(' ✅ Healthy (0 compiler errors)! All clean!');
+    }
+
+    return 0;
+  }
+
   void _printConsoleReport(
     AnalysisReport report,
     AuditorOptions options,
@@ -198,63 +611,54 @@ class CliRunner {
               ? '\n      ↳ Commented classes found inside: [ ${f.commentedClasses.join(', ')} ]'
               : '';
           print(
-              '   🔴 [${f.commentRatio}% comments | ${f.totalNonEmptyLines} lines]: ${f.file}$classesHint');
+              '   🗑️  ${f.fileUri}  [${f.commentRatio}% Comments - ${f.totalNonEmptyLines} lines]$classesHint');
         }
+      } else {
+        print(
+            '\n✅ Commented Code: No commented-out files or dead code blocks detected in this scope.');
       }
 
       if (report.highRatioFiles.isNotEmpty) {
         print(
-            '\n⚠️ 【2. Heavily Commented Files (>= ${options.commentThreshold}% comments)】 - (${report.highRatioFiles.length} files):');
+            '\n⚠️ 【2. Heavily Commented Files (>= ${options.commentThreshold}%)】 - (${report.highRatioFiles.length} files):');
         for (final f in report.highRatioFiles) {
           print(
-              '   🟠 [${f.commentRatio}% comments | ${f.commentLinesCount}/${f.totalNonEmptyLines} lines]: ${f.file}');
+              '   📄 ${f.fileUri}  ➜ ${f.commentRatio}% comments (${f.commentLinesCount}/${f.totalNonEmptyLines} lines)');
         }
       }
 
       if (report.filesWithCommentBlocks.isNotEmpty) {
+        final totalBlocks = report.filesWithCommentBlocks
+            .fold<int>(0, (sum, f) => sum + f.blocks.length);
         print(
-            '\n📦 【3. Active Files with Large Commented Code Blocks (>= ${options.minBlockLines} lines)】 - (${report.filesWithCommentBlocks.length} files):');
+            '\n📦 【3. Active Files Containing Dead Code Blocks】 - ($totalBlocks blocks in ${report.filesWithCommentBlocks.length} files):');
         for (final f in report.filesWithCommentBlocks) {
-          print('   🟡 ${f.file}');
+          print(
+              '   📁 ${f.fileUri} (${f.blocks.length} block${f.blocks.length > 1 ? 's' : ''}):');
           for (final b in f.blocks) {
             print(
-                '      ↳ Lines [L${b.startLine} - L${b.endLine}] (${b.totalLines} lines, ${b.codeLines} lines containing Dart syntax)');
-            if (options.verbose && b.sample.isNotEmpty) {
-              print(
-                  '         Sample:\n         ${b.sample.replaceAll('\n', '\n         ')}');
+                '      ↳ Lines ${b.startLine.toString().padRight(4)} - ${b.endLine.toString().padRight(4)} (${b.totalLines} lines, ~${b.codeLines} lines of commented code)');
+            if (options.verbose) {
+              final snippet =
+                  b.sample.split('\n').map((l) => '         | $l').join('\n');
+              print(snippet);
             }
           }
         }
       }
-
-      if (report.fullyCommentedFiles.isEmpty &&
-          report.highRatioFiles.isEmpty &&
-          report.filesWithCommentBlocks.isEmpty) {
-        print(
-            '\n✅ Commented Code: No commented-out files or dead code blocks detected in this scope.');
-      }
     }
 
+    print('\n${'-' * 78}');
+
     if (options.runClassAnalysis) {
-      print('\n${'-' * 78}');
       if (report.deadClasses.isNotEmpty) {
         print(
-            '\n💀 【4. Unused & Dead Classes (Zero Project-wide References)】 - (${report.deadClasses.length} classes):');
-        print(
-            '   (Classes declared in this scope that have 0 external references across the entire workspace)');
-
-        final byCategory = <String, List<UnusedClassResult>>{};
+            '\n💀 【4. Dead Classes / Elements (Zero Usages Across Entire Project)】 - (${report.deadClasses.length} items):');
         for (final c in report.deadClasses) {
-          byCategory.putIfAbsent(c.category, () => []).add(c);
-        }
-
-        for (final entry in byCategory.entries) {
-          print('\n   🔹 Category [${entry.key}] (${entry.value.length}):');
-          for (final c in entry.value) {
-            final typeTag = c.isPrivate ? '[Private]' : '[Public]';
-            print(
-                '      ❌ $typeTag ${c.name.padRight(32)} 📍 ${c.relPath}:${c.line}');
-          }
+          final typeBadge = c.isPrivate ? 'PRIVATE' : 'PUBLIC';
+          final lineFormatted = '[L${c.line.toString().padRight(4)}]';
+          print(
+              '   ❌ $lineFormatted ${c.fileUri} ➜ ${c.name} ($typeBadge ${c.category})');
         }
       } else {
         print(
@@ -264,16 +668,17 @@ class CliRunner {
       if (options.includeInternal) {
         if (report.internalOnlyClasses.isNotEmpty) {
           print(
-              '\n🏠 【5. File-Internal Only Public Classes】 - (${report.internalOnlyClasses.length} classes):');
+              '\n⚠️ 【5. File-Internal Only Classes (Zero External References)】 - (${report.internalOnlyClasses.length} items):');
           print(
-              '   (Public classes with 0 external references, used only within their declaring file)');
+              '   (These classes are declared as public but only used inside their declaring file)');
           for (final c in report.internalOnlyClasses) {
+            final lineFormatted = '[L${c.line.toString().padRight(4)}]';
             print(
-                '      🔸 ${c.name.padRight(32)} (Internal references: ${c.internalMatches}) 📍 ${c.relPath}:${c.line}');
+                '   🔍 $lineFormatted ${c.fileUri} ➜ ${c.name} (${c.category}, ${c.internalMatches} local usages) ➜ Consider making private (_${c.name})');
           }
         } else {
           print(
-              '\n✅ Internal Classes: No orphaned file-internal public classes found.');
+              '\n✅ Internal Classes: All public classes are shared or no file-internal only classes.');
         }
       }
     }
@@ -282,10 +687,10 @@ class CliRunner {
       print('\n${'-' * 78}');
       if (report.todos.isNotEmpty) {
         print(
-            '\n📋 【6. TODO Comments & Pending Tasks】 - (${report.todos.length} items):');
+            '\n📝 【6. TODO Comments & Pending Tasks】 - (${report.todos.length} items):');
         for (final t in report.todos) {
-          print(
-              '   📝 [L${t.line.toString().padRight(4)}] ${t.file}:${t.line} ➜ ${t.message}');
+          final lineFormatted = '[L${t.line.toString().padRight(4)}]';
+          print('   📝 $lineFormatted ${t.fileUri} ➜ ${t.message}');
         }
       } else {
         print('\n✅ TODO Tasks: No pending TODO comments found in this scope.');
@@ -294,106 +699,119 @@ class CliRunner {
 
     if (options.runDiagnostics) {
       print('\n${'-' * 78}');
-      if (report.diagnostics.isNotEmpty) {
+
+      if (report.unusedImports.isNotEmpty) {
         print(
-            '\n🔍 【7. Dart Analyzer Diagnostics (Unused & Dead Elements)】 - (${report.diagnostics.length} items):');
-
-        if (report.unusedImports.isNotEmpty) {
-          print(
-              '\n   📦 [Unused & Unnecessary Imports] (${report.unusedImports.length}):');
-          for (final d in report.unusedImports) {
-            print('      ❌ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
-          }
+            '\n📦 【7. Unused & Unnecessary Imports】 - (${report.unusedImports.length} items):');
+        for (final d in report.unusedImports) {
+          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
+          print('   📦 $lineFormatted ${d.fileUri} ➜ ${d.message}');
         }
+      } else {
+        print('\n✅ Imports: No unused or unnecessary imports detected.');
+      }
 
-        if (report.unusedVariablesAndFields.isNotEmpty) {
-          print(
-              '\n   🏷️ [Unused Local Variables & Fields] (${report.unusedVariablesAndFields.length}):');
-          for (final d in report.unusedVariablesAndFields) {
-            print('      ❌ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
-          }
-        }
-
-        if (report.unusedElements.isNotEmpty) {
-          print(
-              '\n   ⚙️ [Unused Elements & Functions] (${report.unusedElements.length}):');
-          for (final d in report.unusedElements) {
-            print('      ❌ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
-          }
-        }
-
-        if (report.deadCodeAndExpressions.isNotEmpty) {
-          print(
-              '\n   💀 [Dead Code & Null-Aware Expressions] (${report.deadCodeAndExpressions.length}):');
-          for (final d in report.deadCodeAndExpressions) {
-            print('      ❌ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
-          }
+      if (report.unusedVariablesAndFields.isNotEmpty) {
+        print(
+            '\n🏷️ 【8. Unused Local Variables & Fields】 - (${report.unusedVariablesAndFields.length} items):');
+        for (final d in report.unusedVariablesAndFields) {
+          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
+          print('   🏷️ $lineFormatted ${d.fileUri} ➜ ${d.message}');
         }
       } else {
         print(
-            '\n✅ Dart Analyzer Diagnostics: No unused imports, variables, elements, or dead code detected.');
+            '\n✅ Variables & Fields: No unused local variables or fields detected.');
+      }
+
+      if (report.unusedElements.isNotEmpty) {
+        print(
+            '\n⚙️ 【9. Unused Elements & Private Members】 - (${report.unusedElements.length} items):');
+        for (final d in report.unusedElements) {
+          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
+          print('   ⚙️ $lineFormatted ${d.fileUri} ➜ ${d.message}');
+        }
+      } else {
+        print(
+            '\n✅ Elements: No unused private methods, functions, or elements detected.');
+      }
+
+      if (report.deadCodeAndExpressions.isNotEmpty) {
+        print(
+            '\n💀 【10. Dead Code & Dead Null-Aware Expressions】 - (${report.deadCodeAndExpressions.length} items):');
+        for (final d in report.deadCodeAndExpressions) {
+          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
+          print('   💀 $lineFormatted ${d.fileUri} ➜ ${d.message}');
+        }
+      } else {
+        print(
+            '\n✅ Dead Code: No unreachable dead code or dead null-aware expressions detected.');
       }
     }
 
     print('\n${'=' * 78}');
-    print('📊 FINAL AUDIT SUMMARY:');
+    print('📊 AUDIT SUMMARY:');
+    print('   Target Path:               ${report.targetPath}');
+    print('   Dart Files Analyzed:       ${report.totalTargetDartFiles}');
+    print('   Dead Classes Found:        ${report.deadClasses.length}');
+    if (options.includeInternal) {
+      print(
+          '   Internal-only Classes:     ${report.internalOnlyClasses.length}');
+    }
+    print('   Fully Commented Files:     ${report.fullyCommentedFiles.length}');
     print(
-        '   - Fully commented-out files:          ${report.fullyCommentedFiles.length}');
-    for (final f in report.fullyCommentedFiles) {
-      print('      ↳ ${f.file}');
-    }
+        '   Files with Dead Blocks:    ${report.filesWithCommentBlocks.length}');
+    print('   TODO Tasks Found:          ${report.todos.length}');
+    print('   Unused Imports:            ${report.unusedImports.length}');
     print(
-        '   - Heavily commented files:            ${report.highRatioFiles.length}');
-    for (final f in report.highRatioFiles) {
-      print('      ↳ ${f.file}');
-    }
+        '   Unused Variables/Fields:   ${report.unusedVariablesAndFields.length}');
+    print('   Unused Elements:           ${report.unusedElements.length}');
     print(
-        '   - Files with dead code blocks:        ${report.filesWithCommentBlocks.length}');
-    for (final f in report.filesWithCommentBlocks) {
-      print('      ↳ ${f.file}');
-    }
+        '   Dead Code & Null-Aware:    ${report.deadCodeAndExpressions.length}');
+    print('=' * 78);
+    print('💡 Pro-tips & Automated Remediation:');
+    print('   • Preview cleanup without modifying files on disk (simulation):');
+    print('     ↳ detect_unused --clean-all --dry-run');
     print(
-        '   - Dead classes (Zero usages):         ${report.deadClasses.length}');
-    if (report.deadClasses.isNotEmpty) {
-      final deadByFile = <String, List<String>>{};
-      for (final c in report.deadClasses) {
-        deadByFile.putIfAbsent(c.relPath, () => []).add(c.name);
-      }
-      for (final entry in deadByFile.entries) {
-        print('      ↳ ${entry.key}  :: [${entry.value.join(', ')}]');
-      }
-    }
-    if (options.runClassAnalysis) {
-      print(
-          '   - File-internal only classes:         ${report.internalOnlyClasses.length}');
-      if (options.includeInternal && report.internalOnlyClasses.isNotEmpty) {
-        final internalByFile = <String, List<String>>{};
-        for (final c in report.internalOnlyClasses) {
-          internalByFile.putIfAbsent(c.relPath, () => []).add(c.name);
-        }
-        for (final entry in internalByFile.entries) {
-          print('      ↳ ${entry.key}  :: [${entry.value.join(', ')}]');
-        }
-      }
-    }
-    if (options.runTodoAnalysis) {
-      print('   - TODO pending tasks:                 ${report.todos.length}');
-    }
-    if (options.runDiagnostics) {
-      print(
-          '   - Unused imports:                     ${report.unusedImports.length}');
-      print(
-          '   - Unused variables & fields:          ${report.unusedVariablesAndFields.length}');
-      print(
-          '   - Unused elements:                    ${report.unusedElements.length}');
-      print(
-          '   - Dead code & null-aware expr:        ${report.deadCodeAndExpressions.length}');
-    }
+        '   • Safely clean all detected issues (auto-backup + confirmation):');
+    print('     ↳ detect_unused --clean-all');
+    print('   • Clean specific categories:');
+    print(
+        '     ↳ detect_unused --clean-commented-files   (Delete 100% commented-out files)');
+    print(
+        '     ↳ detect_unused --clean-dead-blocks       (Remove dead code blocks)');
+    print(
+        '     ↳ detect_unused --clean-dead-classes      (Remove zero-usage dead classes)');
+    print(
+        '     ↳ detect_unused --privatize-internal      (Privatize internal-only classes to _)');
+    print(
+        '     ↳ detect_unused --clean-todos             (Strip/clean pending TODO comments)');
+    print(
+        '     ↳ detect_unused --clean-unused-imports    (Remove unused & unnecessary imports)');
+    print(
+        '     ↳ detect_unused --clean-dead-code         (Clean dead null-aware ?. and dead code)');
+    print('   • Snapshot backups & rollback:');
+    print(
+        '     ↳ detect_unused --backups                 (List all available backups)');
+    print(
+        '     ↳ detect_unused --restore <id>            (Restore project to specific backup)');
+    print(
+        '     ↳ detect_unused --restore-latest          (Restore to most recent snapshot)');
+    print('   • View full reference and options:');
+    print('     ↳ detect_unused --help');
     print('${'=' * 78}\n');
   }
 
-  /// Extracts the target path or URL from the command-line arguments.
+  /// Extracts target path argument from the command-line options.
   static String? extractTargetArg(List<String> args) {
+    String cleanInputPath(String raw) {
+      var s = raw.trim();
+      if ((s.startsWith('"') && s.endsWith('"')) ||
+          (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.substring(1, s.length - 1).trim();
+      }
+      return s;
+    }
+
     for (int i = 0; i < args.length; i++) {
       final a = args[i];
       final match = RegExp(r'^--(?:url|path|target)=(.*)$').firstMatch(a);
@@ -422,7 +840,8 @@ class CliRunner {
       if (i > 0 &&
           (args[i - 1] == '--threshold' ||
               args[i - 1] == '--min-lines' ||
-              args[i - 1] == '--json')) {
+              args[i - 1] == '--json' ||
+              args[i - 1] == '--restore')) {
         continue;
       }
       return cleanInputPath(a);
@@ -435,7 +854,7 @@ class CliRunner {
     print('''
 ================================================================================
   detect_unused_code
-  A fast, zero-dependency Dart & Flutter dead code and comprehensive auditor.
+  A fast, zero-dependency Dart & Flutter dead code auditor and remediation engine.
 ================================================================================
 
 USAGE:
@@ -467,6 +886,29 @@ TARGET SPECIFICATION:
                            Default: Scans the entire project if omitted.
   --path=<path>            Aliases for --url.
   --target=<path>
+
+AUTOMATED REMEDIATION & CLEANUP:
+  --clean-all, --clean     Remediate all detected safe issues in one cohesive pass:
+                           deletes 100% commented files, removes dead code blocks, removes
+                           dead classes, privatizes internal classes, strips TODOs, and
+                           removes unused imports with an automatic snapshot backup.
+  --clean-commented-files  Permanently delete fully commented-out files (>=90% comments).
+  --clean-dead-blocks      Surgically remove large blocks of commented-out code in active files.
+  --clean-dead-classes     Remove zero-usage dead classes, mixins, and widgets.
+  --privatize-internal     Convert file-internal public classes to private (_ClassName).
+  --clean-todos            Strip and remove pending // TODO comments from target files.
+  --clean-unused-imports   Remove unused_import and unnecessary_import statements.
+  --clean-dead-code        Clean dead null-aware expressions (?. to .) and unreachable code.
+
+SAFETY & CONTROLS:
+  --dry-run                Simulate the cleanup without modifying any files on disk.
+  --yes, -y                Skip the interactive confirmation prompt and proceed immediately.
+  --no-backup              Bypass automatic snapshot backup creation before cleaning (not recommended).
+
+BACKUP & ROLLBACK:
+  --backups, --list-backups  List all available snapshot backups with IDs and timestamps.
+  --restore <id>             Restore active project files from the specified backup snapshot ID.
+  --restore-latest           Restore active project files from the most recent backup snapshot.
 
 ANALYSIS FILTER FLAGS:
   --unused-classes,        Scan and report only unused/dead classes and widgets.
@@ -506,17 +948,20 @@ EXAMPLES:
   # Comprehensive audit of current project (all 13 checks)
   detect_unused
 
-  # Scan a specific directory
-  detect_unused --path="lib/presentation/pages"
+  # Clean all unused code safely with confirmation and automatic backup
+  detect_unused --clean-all
 
-  # Scan a single file
-  detect_unused lib/models/user_model.dart
+  # Preview cleanup changes without touching disk
+  detect_unused --clean-all --dry-run
 
-  # Export complete JSON report for CI/CD
-  detect_unused --json
+  # Clean only unused imports
+  detect_unused --clean-unused-imports
 
-  # Audit only TODO comments
-  detect_unused --todos-only
+  # View all snapshot backups
+  detect_unused --backups
+
+  # Rollback project to a previous snapshot
+  detect_unused --restore 1
 ================================================================================
 ''');
   }

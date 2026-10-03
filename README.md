@@ -195,11 +195,66 @@ detect_unused -v
 
 ---
 
+## 🧹 Automated Cleanup & Remediation (New in 2.0.0)
+
+Version `2.0.0` introduces a safe, defensive code cleaning engine. It can automatically remediate all detected issues while maintaining snapshot backups and verified compilation health:
+
+```bash
+# 1. Remediate ALL detected safe issues with automatic snapshot backup & confirmation
+detect_unused --clean-all
+
+# 2. Preview planned changes without modifying any files on disk
+detect_unused --clean-all --dry-run
+
+# 3. Clean specific categories individually
+detect_unused --clean-commented-files    # Deletes 100% commented-out files
+detect_unused --clean-dead-blocks        # Removes dead commented-out code blocks
+detect_unused --clean-dead-classes       # Removes zero-usage dead classes and widgets
+detect_unused --privatize-internal       # Converts file-internal public classes to _ClassName
+detect_unused --clean-todos              # Strips and cleans pending // TODO lines
+detect_unused --clean-unused-imports     # Removes unused and unnecessary imports
+detect_unused --clean-dead-code          # Replaces dead null-aware ?. with . and cleans dead code
+
+# 4. Skip confirmation prompt for CI/CD or automated scripts
+detect_unused --clean-all -y
+
+# 5. List all snapshot backups
+detect_unused --backups
+
+# 6. Rollback to any previous backup snapshot
+detect_unused --restore 1
+
+# 7. Rollback to the most recent backup
+detect_unused --restore-latest
+```
+
+### 🛡️ Defensive Safety Architecture
+1. **Automatic Snapshot Backups**: Before any files are touched, an isolated copy is saved to `.detect_unused/backups/`.
+2. **Instant Rollback**: If you ever want to revert, run `detect_unused --restore <id>` to instantly recover files.
+3. **Automatic `.gitignore` Protection**: `.detect_unused/` is automatically appended to your `.gitignore`.
+4. **Post-Cleanup Health Verification**: The tool automatically verifies `dart analyze` after cleaning. If compiler errors are detected, it prompts to auto-rollback immediately.
+
+---
+
 ## CLI Options Reference
 
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--path=<dir>` / `--url=<dir>` | - | `.` | Target directory or file to audit |
+| `--clean-all` | `--clean` | `false` | Remediate all safe issues with auto-backup & prompt |
+| `--clean-commented-files` | - | `false` | Delete 100% commented-out files |
+| `--clean-dead-blocks` | - | `false` | Remove dead commented code blocks |
+| `--clean-dead-classes` | - | `false` | Remove zero-usage dead classes and widgets |
+| `--privatize-internal` | - | `false` | Convert file-internal public classes to `_ClassName` |
+| `--clean-todos` | `--clean-todo` | `false` | Clean and remove pending `// TODO` comments |
+| `--clean-unused-imports` | `--clean-imports` | `false` | Remove unused and unnecessary import statements |
+| `--clean-dead-code` | - | `false` | Remediate dead null-aware expressions (`?.` to `.`) |
+| `--dry-run` | - | `false` | Preview cleanup changes without touching disk |
+| `--yes` | `-y` | `false` | Skip interactive confirmation prompt |
+| `--no-backup` | - | `false` | Bypass automatic snapshot backup (not recommended) |
+| `--backups` | `--list-backups` | `false` | List all available snapshot backups |
+| `--restore <id>` | - | - | Restore active project files from backup ID |
+| `--restore-latest` | - | `false` | Restore project files from the latest snapshot |
 | `--todos-only` | - | `false` | Audit only TODO tasks and pending notes |
 | `--diagnostics-only` | `--analyzer-only` | `false` | Audit only Dart analyzer diagnostics |
 | `--unused-classes` | `--classes` | `false` | Audit only unused/dead classes |
@@ -310,6 +365,46 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   detect_unused --json
   # أو تحديد اسم مخصص للملف:
   detect_unused --json=report.json
+  ```
+
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (الجديدة في 2.0.0):
+- **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
+  ```bash
+  detect_unused --clean-all
+  ```
+- **معاينة خطة التنظيف فقط بدون تعديل أي ملف في القرص (محاكاة):**
+  ```bash
+  detect_unused --clean-all --dry-run
+  ```
+- **تنظيف نوع محدد فقط:**
+  ```bash
+  # حذف الملفات المعلقة بالكامل (100% comments):
+  detect_unused --clean-commented-files
+
+  # حذف الكتل المعلقة الكبيرة من الملفات الحية:
+  detect_unused --clean-dead-blocks
+
+  # حذف الكلاسات المهجورة غير المستخدمة نهائياً:
+  detect_unused --clean-dead-classes
+
+  # تحويل الكلاسات الداخلية إلى كلاسات خاصة (_ClassName):
+  detect_unused --privatize-internal
+
+  # تنظيف أسطر المهام المعلقة (TODO):
+  detect_unused --clean-todos
+
+  # تنظيف الاستيرادات غير المستخدمة:
+  detect_unused --clean-unused-imports
+  ```
+- **عرض قائمة النسخ الاحتياطية المحفوظة:**
+  ```bash
+  detect_unused --backups
+  ```
+- **استرجاع المشروع إلى نسخة احتياطية سابقة:**
+  ```bash
+  detect_unused --restore 1
+  # أو استرجاع أحدث نسخة مباشرة:
+  detect_unused --restore-latest
   ```
 
 ---

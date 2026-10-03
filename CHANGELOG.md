@@ -1,3 +1,24 @@
+## 2.0.0
+
+- **Major Upgrade:** Transformed `detect_unused_code` into a powerful code remediation and automated cleaning engine while preserving zero external runtime dependencies.
+- **Automated Cleanup Engine (`--clean-all`, `--clean`):**
+  - Safely deletes 100% commented-out files (`--clean-commented-files`).
+  - Surgically removes dead commented-out code blocks in active files (`--clean-dead-blocks`).
+  - Removes zero-usage dead classes, mixins, widgets, and enums (`--clean-dead-classes`).
+  - Safely privatizes file-internal only public classes to `_ClassName` (`--privatize-internal`).
+  - Cleans and strips pending `// TODO` comment lines (`--clean-todos`).
+  - Cleans `unused_import` and `unnecessary_import` statements (`--clean-unused-imports`).
+  - Remediates dead null-aware expressions (`?.` to `.`) and unreachable dead code (`--clean-dead-code`).
+- **Defensive Safety Architecture:**
+  - **Snapshot Backups:** Automatically creates complete snapshots in `.detect_unused/backups/` before performing any cleanup.
+  - **Instant Rollback:** Allows rolling back active project code to any previous snapshot with `detect_unused --restore <id>` or `detect_unused --restore-latest`.
+  - **Backups Browser:** View all existing snapshots with `detect_unused --backups`.
+  - **Automated `.gitignore` Protection:** Automatically adds `.detect_unused/` to `.gitignore` to prevent committing backup snapshots.
+  - **Simulation Mode (`--dry-run`):** Preview planned file deletions and modifications without touching disk.
+  - **Interactive Confirmation:** Prompts for explicit user confirmation before executing changes (bypassable with `--yes` or `-y`).
+  - **Post-Cleanup Health Verification:** Automatically runs `dart analyze` after cleaning and prompts for an auto-rollback if any compiler errors are introduced.
+- **Full API Documentation:** 100% dartdoc documentation coverage on all new classes (`BackupManager`, `BackupManifest`, `BackupFileEntry`, `RestoreResult`, `CodeCleaner`, `CleanResult`).
+
 ## 1.3.2
 
 - Appended line number directly to the file path in the TODO console report (e.g. `path/to/file.dart:line`) enabling instant clickability in IDE terminals.
