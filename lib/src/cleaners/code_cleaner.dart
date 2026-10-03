@@ -960,6 +960,14 @@ class CodeCleaner {
         final msg = item['problemMessage']?.toString() ?? 'Error';
         final loc = item['location'] as Map<String, dynamic>?;
         final file = loc?['file']?.toString() ?? '';
+        final normPath = file.replaceAll(r'\', '/').toLowerCase();
+        if (normPath.contains('/.detect_unused') ||
+            normPath.contains('/backups') ||
+            normPath.contains('/.backups') ||
+            normPath.endsWith('/backup') ||
+            normPath.contains('/backup/')) {
+          continue;
+        }
         final line = (loc?['range']?['start']?['line'] as num?)?.toInt() ?? 1;
         final col = (loc?['range']?['start']?['column'] as num?)?.toInt() ?? 1;
 

@@ -10,6 +10,12 @@ const ignoredDirNames = {
   'node_modules',
   '.windsurf',
   'Flashpost-tests',
+  '.detect_unused',
+  'detect_unused',
+  'backups',
+  '.backups',
+  'backup',
+  '.backup',
 };
 
 /// Keywords used to detect whether a commented line contains Dart code syntax.
@@ -214,6 +220,15 @@ List<File> walkDartFiles(FileSystemEntity entity) {
     return results;
   }
 
+  final normEntityPath = entity.path.replaceAll(r'\', '/').toLowerCase();
+  if (normEntityPath.contains('/.detect_unused') ||
+      normEntityPath.contains('/backups') ||
+      normEntityPath.contains('/.backups') ||
+      normEntityPath.endsWith('/backup') ||
+      normEntityPath.contains('/backup/')) {
+    return results;
+  }
+
   if (entity is File) {
     if (entity.path.endsWith('.dart')) {
       results.add(entity);
@@ -225,6 +240,15 @@ List<File> walkDartFiles(FileSystemEntity entity) {
     try {
       final entries = entity.listSync(followLinks: false);
       for (final entry in entries) {
+        final normPath = entry.path.replaceAll(r'\', '/').toLowerCase();
+        if (normPath.contains('/.detect_unused') ||
+            normPath.contains('/backups') ||
+            normPath.contains('/.backups') ||
+            normPath.endsWith('/backup') ||
+            normPath.contains('/backup/')) {
+          continue;
+        }
+
         final name = entry.uri.pathSegments.isNotEmpty
             ? entry.uri.pathSegments[
                 entry.uri.pathSegments.length - (entry is Directory ? 2 : 1)]

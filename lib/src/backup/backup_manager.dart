@@ -49,6 +49,17 @@ class BackupManager {
           );
         }
       }
+      // Exclude everything in .detect_unused from the Dart analyzer
+      final base = backupBaseDir;
+      final detectUnusedDir = base.parent;
+      if (!detectUnusedDir.existsSync()) {
+        detectUnusedDir.createSync(recursive: true);
+      }
+      final excludeOptions =
+          File('${detectUnusedDir.path}/analysis_options.yaml');
+      if (!excludeOptions.existsSync()) {
+        excludeOptions.writeAsStringSync('analyzer:\n  exclude:\n    - "**"\n');
+      }
     } catch (_) {}
   }
 
