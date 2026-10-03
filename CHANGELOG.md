@@ -1,3 +1,9 @@
+## 2.0.1
+
+- **Fix:** Exclude `.detect_unused/` and backup snapshot directories from file scanning and analysis to prevent scanning cached backups.
+- **Improvement:** Automatically delete restored backup snapshot folders upon successful restoration to reclaim disk space (with `--keep-backup` flag to retain if desired).
+- **Fix:** Auto-resolve dangling barrel export and import directives referencing deleted files during cleanup before running post-cleanup health verification.
+
 ## 2.0.0
 
 - **Major Upgrade:** Transformed `detect_unused_code` into a powerful code remediation and automated cleaning engine while preserving zero external runtime dependencies.
