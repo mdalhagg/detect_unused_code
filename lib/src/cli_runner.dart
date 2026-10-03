@@ -27,13 +27,27 @@ class CliRunner {
     final projectRoot = findProjectOrWorkspaceRoot();
 
     // 1. Backups listing
+    // 1. Backups listing
     if (args.contains('--backups') || args.contains('--list-backups')) {
       return _listBackups(projectRoot);
     }
 
+    // Clean all backups to free disk space
+    if (args.contains('--clean-backups') || args.contains('--delete-backups')) {
+      final manager = BackupManager(projectRoot);
+      final count = manager.deleteAllBackups();
+      print(
+          '🗑️ Cleaned $count backup snapshot(s) from .detect_unused/backups/.');
+      return 0;
+    }
+
+    final keepBackup = args.contains('--keep-backup');
+    final deleteAfterRestore = !keepBackup;
+
     // 2. Restore latest backup
     if (args.contains('--restore-latest')) {
-      return _restoreLatest(projectRoot);
+      return _restoreLatest(projectRoot,
+          deleteAfterRestore: deleteAfterRestore);
     }
 
     // 3. Restore specific backup by ID
@@ -43,7 +57,8 @@ class CliRunner {
         if (i + 1 < args.length) {
           final id = int.tryParse(args[i + 1]);
           if (id != null) {
-            return _restoreBackup(projectRoot, id);
+            return _restoreBackup(projectRoot, id,
+                deleteAfterRestore: deleteAfterRestore);
           }
         }
         print(
@@ -52,7 +67,8 @@ class CliRunner {
       } else if (a.startsWith('--restore=')) {
         final id = int.tryParse(a.substring('--restore='.length));
         if (id != null) {
-          return _restoreBackup(projectRoot, id);
+          return _restoreBackup(projectRoot, id,
+              deleteAfterRestore: deleteAfterRestore);
         }
         print(
             '❌ Please specify a valid backup ID: detect_unused --restore=<id>');
@@ -291,17 +307,25 @@ class CliRunner {
     return 0;
   }
 
-  int _restoreLatest(Directory projectRoot) {
+  int _restoreLatest(
+    Directory projectRoot, {
+    bool deleteAfterRestore = true,
+  }) {
     final manager = BackupManager(projectRoot);
     final latest = manager.getLatestBackup();
     if (latest == null) {
       print('❌ No backups found to restore in .detect_unused/backups/.');
       return 1;
     }
-    return _restoreBackup(projectRoot, latest.id);
+    return _restoreBackup(projectRoot, latest.id,
+        deleteAfterRestore: deleteAfterRestore);
   }
 
-  int _restoreBackup(Directory projectRoot, int id) {
+  int _restoreBackup(
+    Directory projectRoot,
+    int id, {
+    bool deleteAfterRestore = true,
+  }) {
     final manager = BackupManager(projectRoot);
     final manifest = manager.getBackup(id);
     if (manifest == null) {
@@ -318,7 +342,8 @@ class CliRunner {
       return 0;
     }
 
-    final result = manager.restoreBackup(id);
+    final result =
+        manager.restoreBackup(id, deleteAfterRestore: deleteAfterRestore);
     if (result.success) {
       print(
           '\n================================================================================');
@@ -328,6 +353,10 @@ class CliRunner {
       print('  ✅ Files Restored/Recreated: ${result.restoredFiles.length}');
       print(
           '  📁 Project state has been restored to: ${manifest.formattedDate}');
+      if (result.snapshotDeleted) {
+        print(
+            '  🗑️ Backup #$id snapshot folder was removed to free up disk space.');
+      }
       print(
           '================================================================================');
       return 0;
@@ -571,10 +600,16 @@ class CliRunner {
             rbInput.isEmpty ||
             rbInput == 'y' ||
             rbInput == 'yes') {
-          final rb =
-              cleaner.backupManager.restoreBackup(cleanResult.backup!.id);
+          final rb = cleaner.backupManager.restoreBackup(
+            cleanResult.backup!.id,
+            deleteAfterRestore: true,
+          );
           if (rb.success) {
             print('🔄 Project successfully restored to pre-cleanup state!');
+            if (rb.snapshotDeleted) {
+              print(
+                  '  🗑️ Backup #${cleanResult.backup!.id} folder was removed to free up disk space.');
+            }
           } else {
             print('❌ Restore failed: ${rb.message}');
           }
@@ -907,8 +942,11 @@ SAFETY & CONTROLS:
 
 BACKUP & ROLLBACK:
   --backups, --list-backups  List all available snapshot backups with IDs and timestamps.
-  --restore <id>             Restore active project files from the specified backup snapshot ID.
+  --restore <id>             Restore active project files from the specified backup snapshot ID
+                             (automatically deletes the snapshot folder after restore to free space).
   --restore-latest           Restore active project files from the most recent backup snapshot.
+  --keep-backup              Retain the backup snapshot folder after restoring (disabled by default).
+  --clean-backups            Permanently delete all backup snapshots to free disk space.
 
 ANALYSIS FILTER FLAGS:
   --unused-classes,        Scan and report only unused/dead classes and widgets.
