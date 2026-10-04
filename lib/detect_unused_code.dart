@@ -28,3 +28,4 @@ export 'src/models.dart'
         DiagnosticIssueResult;
 export 'src/utils.dart'
     show findProjectOrWorkspaceRoot, resolveTargetPath, walkDartFiles;
+export 'src/version.dart' show packageVersion;

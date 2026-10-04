@@ -303,6 +303,8 @@ class CodeCleaner {
       }
     }
 
+
+
     return CleanResult(
       action: 'Clean Commented Files',
       success: true,
@@ -362,6 +364,14 @@ class CodeCleaner {
         final startIdx = block.startLine - 1;
         final count = (block.endLine - block.startLine) + 1;
         if (startIdx >= 0 && (startIdx + count) <= lines.length) {
+          // Verify that removing this block leaves balanced block comments
+          final slice = lines.sublist(startIdx, startIdx + count).join('\n');
+          final openCount = '/*'.allMatches(slice).length;
+          final closeCount = '*/'.allMatches(slice).length;
+          if (openCount != closeCount) {
+            // Unbalanced comment markers; skip removal to preserve file syntax integrity
+            continue;
+          }
           lines.removeRange(startIdx, startIdx + count);
           removedBlocksCount++;
         }
@@ -466,12 +476,17 @@ class CodeCleaner {
         final t = l.trim();
         return t.isNotEmpty &&
             !t.startsWith('//') &&
+            !t.startsWith('/*') &&
+            !t.startsWith('*') &&
+            !t.startsWith('*/') &&
+            !t.startsWith('///') &&
             !t.startsWith('import ') &&
             !t.startsWith('export ') &&
-            !t.startsWith('part ');
+            !t.startsWith('part ') &&
+            !t.startsWith('library ');
       });
 
-      if (!hasRealCode && remainingCode.length < 150) {
+      if (!hasRealCode) {
         if (!dryRun) {
           file.deleteSync();
         }
@@ -545,6 +560,10 @@ class CodeCleaner {
         }
         final pattern = RegExp(r'\b' + RegExp.escape(c.name) + r'\b');
         updated = updated.replaceAll(pattern, '_${c.name}');
+
+        // Auto-clean unused `key` parameter from constructors of privatized classes
+        updated = _cleanUnusedConstructorKey(updated, '_${c.name}');
+
         privatizedCount++;
       }
 
@@ -561,6 +580,84 @@ class CodeCleaner {
       totalItemsCleaned: privatizedCount,
       backup: manifest,
     );
+  }
+
+  /// Cleans unused `super.key` and `Key? key` parameters from constructors of privatized classes.
+  String _cleanUnusedConstructorKey(String source, String privateClassName) {
+    // Check if any call site in this file passes `key:`
+    final hasKeyCall = RegExp(
+      r'\b' + RegExp.escape(privateClassName) + r'\s*\([^)]*\bkey\s*:',
+    ).hasMatch(source);
+    if (hasKeyCall) {
+      return source;
+    }
+
+    // Matches: [const] _ClassName[.named]({ [params] }) [: super(key: key)] [;|{]
+    final ctorRegex = RegExp(
+      r'((?:const\s+)?\b' +
+          RegExp.escape(privateClassName) +
+          r'(?:\.\w+)?\s*\(\s*\{)([\s\S]*?)(\}\s*\)\s*(?::\s*super\s*\([^)]*\))?\s*(?:;|\{))',
+    );
+
+    return source.replaceAllMapped(ctorRegex, (match) {
+      final prefix = match.group(1)!;
+      var params = match.group(2)!;
+      var suffix = match.group(3)!;
+
+      bool hadKey = false;
+
+      // 1. Remove multi-line super.key line
+      final multiLineSuperKey =
+          RegExp(r'^[ \t]*super\.key\s*,?[ \t]*\r?\n?', multiLine: true);
+      if (multiLineSuperKey.hasMatch(params)) {
+        params = params.replaceAll(multiLineSuperKey, '');
+        hadKey = true;
+      }
+
+      // 2. Remove inline super.key
+      if (params.contains('super.key')) {
+        params = params.replaceAll(RegExp(r'\bsuper\.key\s*,\s*'), '');
+        params = params.replaceAll(RegExp(r'\s*,\s*super\.key\b'), '');
+        params = params.replaceAll(RegExp(r'\bsuper\.key\s*'), '');
+        hadKey = true;
+      }
+
+      // 3. Remove Key? key
+      final multiLineKey = RegExp(
+          r'^[ \t]*(?:final\s+)?Key\??\s+key\s*,?[ \t]*\r?\n?',
+          multiLine: true);
+      if (multiLineKey.hasMatch(params)) {
+        params = params.replaceAll(multiLineKey, '');
+        hadKey = true;
+      }
+      if (RegExp(r'\bKey\??\s+key\b').hasMatch(params)) {
+        params = params.replaceAll(
+            RegExp(r'\b(?:final\s+)?Key\??\s+key\s*,\s*'), '');
+        params = params.replaceAll(
+            RegExp(r'\s*,\s*(?:final\s+)?Key\??\s+key\b'), '');
+        params = params.replaceAll(
+            RegExp(r'\b(?:final\s+)?Key\??\s+key\b'), '');
+        hadKey = true;
+      }
+
+      if (hadKey) {
+        // Remove : super(key: key) from suffix if present
+        suffix = suffix.replaceAll(
+            RegExp(r':\s*super\s*\(\s*key\s*:\s*key\s*\)\s*'), '');
+        suffix = suffix.replaceAll(
+            RegExp(r',\s*super\s*\(\s*key\s*:\s*key\s*\)\s*'), '');
+        suffix = suffix.replaceAll(RegExp(r'\s+;'), ';');
+
+        // If params is empty or only whitespace, convert `({ })` to `()`
+        if (params.trim().isEmpty) {
+          final cleanPrefix = prefix.replaceFirst(RegExp(r'\(\s*\{'), '(');
+          final cleanSuffix = suffix.replaceFirst(RegExp(r'^\}\s*\)'), ')');
+          return '$cleanPrefix$cleanSuffix';
+        }
+      }
+
+      return '$prefix$params$suffix';
+    });
   }
 
   /// Removes pending TODO comments and task directives from files.
@@ -701,7 +798,9 @@ class CodeCleaner {
         final lineIdx = item.line - 1;
         if (lineIdx >= 0 && lineIdx < lines.length) {
           final line = lines[lineIdx].trim();
-          if (line.startsWith('import ') || line.contains('import ')) {
+          if (RegExp(r'^\s*(?:import|export|part)\b').hasMatch(line) ||
+              line.contains('import ') ||
+              line.contains('export ')) {
             lines.removeAt(lineIdx);
             cleanedCount++;
           }
@@ -846,75 +945,111 @@ class CodeCleaner {
         continue;
       }
 
+      final newline = content.contains('\r\n') ? '\r\n' : '\n';
       final lines = content.split(RegExp(r'\r?\n'));
 
       // Sort by line in descending order (bottom to top) to maintain stable indices
       fileIssues.sort((a, b) => b.line.compareTo(a.line));
 
       for (final issue in fileIssues) {
-        final lineIdx = issue.line - 1;
-        if (lineIdx < 0 || lineIdx >= lines.length) {
+        final targetUri = issue.uri;
+        if (targetUri == null || targetUri.trim().isEmpty) {
           continue;
         }
 
-        // Find the start of the directive (import/export/part)
-        int startIdx = lineIdx;
-        while (startIdx > 0 &&
-            !RegExp(r'^\s*(?:import|export|part)\b')
-                .hasMatch(lines[startIdx])) {
-          if (lineIdx - startIdx > 15) {
-            break;
+        // 1. Locate the exact line containing targetUri
+        int targetIdx = -1;
+        final hintIdx = issue.line - 1;
+        if (hintIdx >= 0 &&
+            hintIdx < lines.length &&
+            lines[hintIdx].contains(targetUri)) {
+          targetIdx = hintIdx;
+        } else {
+          // Search in a window around hintIdx
+          final searchStart = (hintIdx - 15).clamp(0, lines.length);
+          final searchEnd = (hintIdx + 16).clamp(0, lines.length);
+          for (int i = searchStart; i < searchEnd; i++) {
+            if (lines[i].contains(targetUri) &&
+                RegExp(r'\b(?:import|export|part)\b').hasMatch(lines[i])) {
+              targetIdx = i;
+              break;
+            }
           }
+          // Global search in file if still not found
+          if (targetIdx == -1) {
+            for (int i = 0; i < lines.length; i++) {
+              if (lines[i].contains(targetUri) &&
+                  RegExp(r'\b(?:import|export|part)\b').hasMatch(lines[i])) {
+                targetIdx = i;
+                break;
+              }
+            }
+          }
+        }
+
+        if (targetIdx == -1) {
+          // Safety guard: NEVER delete an arbitrary line if the target URI is not present!
+          continue;
+        }
+
+        // 2. Check if the directive spans multiple lines or is on a single line
+        int startIdx = targetIdx;
+        while (startIdx > 0 &&
+            !RegExp(r'^\s*(?:import|export|part)\b').hasMatch(lines[startIdx])) {
+          if (targetIdx - startIdx > 15) break;
           startIdx--;
         }
 
-        if (!RegExp(r'^\s*(?:import|export|part)\b')
-            .hasMatch(lines[startIdx])) {
-          startIdx = lineIdx;
-        }
-
-        // Find the end of the directive (semicolon ';')
-        int endIdx = startIdx;
+        int endIdx = targetIdx;
         while (endIdx < lines.length && !lines[endIdx].contains(';')) {
           endIdx++;
-          if (endIdx - startIdx > 30) {
-            break;
-          }
+          if (endIdx - targetIdx > 30) break;
         }
+        if (endIdx >= lines.length) endIdx = targetIdx;
 
-        if (endIdx >= lines.length) {
-          endIdx = startIdx;
-        }
+        String removedText = '';
 
-        final removedText =
-            lines.sublist(startIdx, endIdx + 1).join('\n').trim();
+        if (startIdx == endIdx) {
+          // Single line: remove ONLY the specific directive matching targetUri
+          final line = lines[startIdx];
+          final directivePattern = RegExp(
+            r'(?:^|\s*)(?:import|export|part)\s+["\x27][^"\x27]*' +
+                RegExp.escape(targetUri) +
+                r'["\x27][^;]*;\s*',
+          );
 
-        // Verify it contains import/export/part or the target URI
-        final isDirective =
-            RegExp(r'^(?:import|export|part)\b').hasMatch(removedText);
-        final matchesUri =
-            issue.uri != null && removedText.contains(issue.uri!);
-
-        if (isDirective || matchesUri) {
-          lines.removeRange(startIdx, endIdx + 1);
-
-          // Clean duplicate empty lines if left
-          if (startIdx < lines.length && lines[startIdx].trim().isEmpty) {
-            if (startIdx > 0 && lines[startIdx - 1].trim().isEmpty) {
+          if (directivePattern.hasMatch(line)) {
+            removedText = directivePattern.firstMatch(line)?.group(0)?.trim() ?? targetUri;
+            final remaining = line.replaceAll(directivePattern, '').trim();
+            if (remaining.isEmpty) {
               lines.removeAt(startIdx);
+            } else {
+              lines[startIdx] = remaining;
             }
+          } else if (line.contains(targetUri)) {
+            removedText = line.trim();
+            lines.removeAt(startIdx);
           }
+        } else {
+          // Multi-line directive block: verify it contains targetUri
+          final block = lines.sublist(startIdx, endIdx + 1).join('\n');
+          if (block.contains(targetUri)) {
+            removedText = lines[startIdx].trim();
+            lines.removeRange(startIdx, endIdx + 1);
+          }
+        }
 
+        if (removedText.isNotEmpty) {
           removedItems.add(RemovedDirectiveItem(
             file: getRelativePath(file.path, projectRoot.path),
             line: issue.line,
-            directive: removedText.split('\n').first.trim(),
-            targetUri: issue.uri ?? '',
+            directive: removedText,
+            targetUri: targetUri,
           ));
         }
       }
 
-      file.writeAsStringSync(lines.join('\n'));
+      file.writeAsStringSync(lines.join(newline));
     }
 
     return removedItems;
@@ -1036,12 +1171,12 @@ class CodeCleaner {
   int _findDeclarationEndLine(List<String> lines, int startLineIdx) {
     int depth = 0;
     bool foundOpenBrace = false;
+    bool inBlockComment = false;
 
     for (int i = startLineIdx; i < lines.length; i++) {
       final line = lines[i];
 
-      // Handle semicolon declarations (e.g. class A = B with C;)
-      if (!foundOpenBrace && line.contains(';')) {
+      if (!foundOpenBrace && !inBlockComment && line.contains(';')) {
         final openIdx = line.indexOf('{');
         final semiIdx = line.indexOf(';');
         if (openIdx == -1 || semiIdx < openIdx) {
@@ -1049,16 +1184,80 @@ class CodeCleaner {
         }
       }
 
-      for (int charIdx = 0; charIdx < line.length; charIdx++) {
-        final char = line[charIdx];
-        if (char == '{') {
-          depth++;
-          foundOpenBrace = true;
-        } else if (char == '}') {
-          depth--;
-          if (foundOpenBrace && depth <= 0) {
-            return i;
+      int idx = 0;
+      while (idx < line.length) {
+        if (inBlockComment) {
+          final closeIdx = line.indexOf('*/', idx);
+          if (closeIdx != -1) {
+            inBlockComment = false;
+            idx = closeIdx + 2;
+          } else {
+            break;
           }
+        } else {
+          final c = line[idx];
+          if (c == '/' && idx + 1 < line.length) {
+            final next = line[idx + 1];
+            if (next == '/') {
+              // Single-line comment: ignore rest of line
+              break;
+            }
+            if (next == '*') {
+              inBlockComment = true;
+              idx += 2;
+              continue;
+            }
+          }
+
+          if (c == "'" || c == '"') {
+            final quote = c;
+            final isTriple = idx + 2 < line.length &&
+                line[idx + 1] == quote &&
+                line[idx + 2] == quote;
+            if (isTriple) {
+              idx += 3;
+              while (idx < line.length) {
+                if (line[idx] == quote &&
+                    idx + 2 < line.length &&
+                    line[idx + 1] == quote &&
+                    line[idx + 2] == quote) {
+                  idx += 3;
+                  break;
+                }
+                if (line[idx] == '\\' && idx + 1 < line.length) {
+                  idx += 2;
+                  continue;
+                }
+                idx++;
+              }
+            } else {
+              idx++;
+              while (idx < line.length) {
+                final cur = line[idx];
+                if (cur == quote) {
+                  idx++;
+                  break;
+                }
+                if (cur == '\\' && idx + 1 < line.length) {
+                  idx += 2;
+                  continue;
+                }
+                idx++;
+              }
+            }
+            continue;
+          }
+
+          if (c == '{') {
+            depth++;
+            foundOpenBrace = true;
+          } else if (c == '}') {
+            depth--;
+            if (foundOpenBrace && depth <= 0) {
+              return i;
+            }
+          }
+          idx++;
         }
       }
     }

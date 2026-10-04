@@ -154,8 +154,9 @@ class BackupManager {
   /// Adds additional files to an existing backup manifest snapshot before they are modified.
   void appendToBackup(
     BackupManifest manifest,
-    Iterable<File> additionalFiles,
-  ) {
+    Iterable<File> additionalFiles, {
+    Iterable<String>? filesMarkedForDeletion,
+  }) {
     final backupDir =
         Directory('${backupBaseDir.path}/${manifest.backupDirName}');
     if (!backupDir.existsSync()) {
@@ -164,13 +165,32 @@ class BackupManager {
 
     final existingSet =
         manifest.files.map((e) => canonicalizePath(e.originalPath)).toSet();
+    final deletionSet = filesMarkedForDeletion
+            ?.map((p) => canonicalizePath(p))
+            .toSet() ??
+        const <String>{};
 
     for (final file in additionalFiles) {
       if (!file.existsSync()) {
         continue;
       }
       final canon = canonicalizePath(file.path);
+      final isDel = deletionSet.contains(canon);
+
       if (existingSet.contains(canon)) {
+        if (isDel) {
+          final idx = manifest.files.indexWhere(
+              (e) => canonicalizePath(e.originalPath) == canon);
+          if (idx != -1 && !manifest.files[idx].isDeleted) {
+            final old = manifest.files[idx];
+            manifest.files[idx] = BackupFileEntry(
+              originalPath: old.originalPath,
+              relativePath: old.relativePath,
+              backupRelativePath: old.backupRelativePath,
+              isDeleted: true,
+            );
+          }
+        }
         continue;
       }
       existingSet.add(canon);
@@ -184,7 +204,7 @@ class BackupManager {
         originalPath: file.path,
         relativePath: rel,
         backupRelativePath: 'files/$rel',
-        isDeleted: false,
+        isDeleted: isDel,
       ));
     }
 

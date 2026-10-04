@@ -137,6 +137,9 @@ class DeclaredClassItem {
   /// Clickable `file://` URI string for IDE navigation.
   final String fileUri;
 
+  /// Member names declared within this class or extension (methods, getters, setters, fields).
+  final List<String> memberNames;
+
   /// Creates a new [DeclaredClassItem].
   DeclaredClassItem({
     required this.name,
@@ -146,6 +149,7 @@ class DeclaredClassItem {
     required this.isPrivate,
     required this.relPath,
     required this.fileUri,
+    this.memberNames = const [],
   });
 }
 

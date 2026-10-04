@@ -170,7 +170,8 @@ class UnusedCodeAuditor {
 
       for (int i = 0; i < lines.length; i++) {
         final lineNum = i + 1;
-        final trimmed = lines[i].trim();
+        final rawLine = lines[i];
+        final trimmed = rawLine.trim();
         final isEmpty = trimmed.isEmpty;
 
         if (!isEmpty) totalNonEmpty++;
@@ -178,21 +179,67 @@ class UnusedCodeAuditor {
         bool isComment = false;
         bool isCodeComment = false;
 
-        if (inBlockComment) {
-          isComment = true;
-          if (isDartCodeLine(trimmed)) isCodeComment = true;
-          if (trimmed.contains('*/')) inBlockComment = false;
-        } else if (trimmed.startsWith('/*')) {
-          isComment = true;
-          if (isDartCodeLine(trimmed)) isCodeComment = true;
-          if (!trimmed.contains('*/') ||
-              trimmed.indexOf('*/') < trimmed.indexOf('/*') + 2) {
-            inBlockComment = true;
+        if (isEmpty) {
+          if (inBlockComment) {
+            isComment = true;
           }
-        } else if (trimmed.startsWith('//')) {
-          isComment = true;
-          final body = trimmed.replaceFirst(RegExp(r'^///?\s*'), '');
-          if (isDartCodeLine(body)) isCodeComment = true;
+        } else {
+          int idx = 0;
+          bool hasRealCode = false;
+          bool hasComment = false;
+          final commentTextParts = <String>[];
+
+          while (idx < rawLine.length) {
+            if (inBlockComment) {
+              final closeIdx = rawLine.indexOf('*/', idx);
+              if (closeIdx != -1) {
+                hasComment = true;
+                commentTextParts.add(rawLine.substring(idx, closeIdx));
+                inBlockComment = false;
+                idx = closeIdx + 2;
+              } else {
+                hasComment = true;
+                commentTextParts.add(rawLine.substring(idx));
+                break;
+              }
+            } else {
+              final openBlockIdx = rawLine.indexOf('/*', idx);
+              final singleLineIdx = rawLine.indexOf('//', idx);
+
+              if (singleLineIdx != -1 &&
+                  (openBlockIdx == -1 || singleLineIdx < openBlockIdx)) {
+                if (rawLine.substring(idx, singleLineIdx).trim().isNotEmpty) {
+                  hasRealCode = true;
+                }
+                hasComment = true;
+                final body = rawLine
+                    .substring(singleLineIdx + 2)
+                    .replaceFirst(RegExp(r'^/?\s*'), '');
+                commentTextParts.add(body);
+                break;
+              } else if (openBlockIdx != -1) {
+                if (rawLine.substring(idx, openBlockIdx).trim().isNotEmpty) {
+                  hasRealCode = true;
+                }
+                hasComment = true;
+                inBlockComment = true;
+                idx = openBlockIdx + 2;
+              } else {
+                if (rawLine.substring(idx).trim().isNotEmpty) {
+                  hasRealCode = true;
+                }
+                break;
+              }
+            }
+          }
+
+          if (hasComment && !hasRealCode) {
+            isComment = true;
+            final fullCommentText = commentTextParts.join(' ').trim();
+            if (isDartCodeLine(fullCommentText)) {
+              isCodeComment = true;
+            }
+          }
         }
 
         if (isComment) {
@@ -288,6 +335,11 @@ class UnusedCodeAuditor {
           final isMixin = match.group(3) != null;
           final isExtension = match.group(4) != null || match.group(5) != null;
 
+          // Skip unnamed extensions (e.g. extension on Type)
+          if (isExtension && (className == 'on' || className == 'type')) {
+            continue;
+          }
+
           String category = 'Class';
           if (isEnum) {
             category = 'Enum';
@@ -316,6 +368,10 @@ class UnusedCodeAuditor {
             category = 'Service/Repository';
           }
 
+          final memberNames = isExtension
+              ? _extractExtensionMembers(lines, i)
+              : const <String>[];
+
           declaredClasses.add(DeclaredClassItem(
             name: className,
             file: file.path,
@@ -324,6 +380,7 @@ class UnusedCodeAuditor {
             isPrivate: className.startsWith('_'),
             relPath: getRelativePath(file.path, rootPath),
             fileUri: toFileUri(file.path),
+            memberNames: memberNames,
           ));
         }
       }
@@ -337,7 +394,14 @@ class UnusedCodeAuditor {
       if (onFileProgress != null && (i % 3 == 0 || i == totalDeclared - 1)) {
         onFileProgress(i + 1, totalDeclared);
       }
+      final isExt = item.category == 'Extension';
       final wordRegex = RegExp('\\b${RegExp.escape(item.name)}\\b');
+
+      final memberRegexes = isExt && item.memberNames.isNotEmpty
+          ? item.memberNames
+              .map((m) => RegExp('\\b${RegExp.escape(m)}\\b'))
+              .toList()
+          : const <RegExp>[];
 
       int totalExternalMatches = 0;
       final itemCanon = canonicalizePath(item.file);
@@ -348,12 +412,32 @@ class UnusedCodeAuditor {
           if (matchesCount > 0) {
             totalExternalMatches += matchesCount;
           }
+
+          // For extensions: also check if any declared members are referenced in other files!
+          if (isExt && memberRegexes.isNotEmpty) {
+            for (final mRegex in memberRegexes) {
+              final memberMatches = mRegex.allMatches(entry.value).length;
+              if (memberMatches > 0) {
+                totalExternalMatches += memberMatches;
+              }
+            }
+          }
         }
       }
 
       if (totalExternalMatches == 0) {
         final fileCleanCode = projectCleanMap[itemCanon] ?? '';
-        final internalUsages = countInternalUsages(fileCleanCode, item.name);
+        var internalUsages = countInternalUsages(fileCleanCode, item.name);
+
+        // For extensions: also check if any members are used internally within the declaring file
+        if (isExt && memberRegexes.isNotEmpty) {
+          for (final mRegex in memberRegexes) {
+            final mCount = mRegex.allMatches(fileCleanCode).length;
+            if (mCount > 1) {
+              internalUsages += (mCount - 1);
+            }
+          }
+        }
 
         if (internalUsages == 0) {
           results.add(UnusedClassResult(
@@ -367,8 +451,8 @@ class UnusedCodeAuditor {
             type: item.isPrivate ? 'PRIVATE_UNUSED' : 'PUBLIC_ZERO_EXTERNAL',
             severity: 'CRITICAL',
             reason: item.isPrivate
-                ? 'Private class unused even within declaring file'
-                : 'Public class (${item.category}) with zero usages across project or file',
+                ? 'Private ${item.category.toLowerCase()} unused even within declaring file'
+                : 'Public ${item.category.toLowerCase()} with zero usages or member references across project',
             internalMatches: 0,
             externalMatches: 0,
           ));
@@ -385,7 +469,7 @@ class UnusedCodeAuditor {
               type: 'FILE_INTERNAL_ONLY',
               severity: 'MEDIUM',
               reason:
-                  'Public class used file-internally only ($internalUsages local usages)',
+                  'Public ${item.category.toLowerCase()} used file-internally only ($internalUsages local usages)',
               internalMatches: internalUsages,
               externalMatches: 0,
             ));
@@ -395,6 +479,153 @@ class UnusedCodeAuditor {
     }
 
     return results;
+  }
+
+  static const _reservedKeywords = {
+    'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+    'break', 'continue', 'return', 'throw', 'try', 'catch', 'finally',
+    'assert', 'yield', 'await', 'async', 'sync', 'this', 'super',
+    'new', 'const', 'final', 'var', 'late', 'static', 'dynamic', 'void',
+    'class', 'enum', 'mixin', 'extension', 'type', 'typedef', 'on', 'with',
+    'import', 'export', 'part', 'as', 'show', 'hide', 'is', 'get', 'set',
+    'operator', 'abstract', 'base', 'sealed', 'interface', 'Function',
+  };
+
+  /// Extracts member identifiers declared directly inside an extension body.
+  ///
+  /// Scans getters, setters, methods, and static fields declared at brace depth 1.
+  /// Discards parameter blocks, arrow function bodies, and nested expressions.
+  List<String> _extractExtensionMembers(List<String> lines, int startLineIdx) {
+    final members = <String>{};
+
+    int depth = 0;
+    bool foundOpenBrace = false;
+    int parenDepth = 0;
+    bool inArrowBody = false;
+
+    final getterRegex = RegExp(r'\bget\s+([A-Za-z0-9_$]+)\b');
+    final setterRegex = RegExp(r'\bset\s+([A-Za-z0-9_$]+)\s*\(');
+    final staticFieldRegex =
+        RegExp(r'\bstatic\b[^=;()]*\b([A-Za-z0-9_$]+)\s*(?:=|;)');
+
+    for (int i = startLineIdx; i < lines.length; i++) {
+      var line = lines[i];
+
+      // Strip annotations (e.g. @override, @Deprecated('...'))
+      line = line.replaceAll(RegExp(r'@[A-Za-z0-9_$]+(?:\([^)]*\))?'), ' ');
+
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      if (!foundOpenBrace) {
+        final openIdx = line.indexOf('{');
+        if (openIdx != -1) {
+          foundOpenBrace = true;
+          depth = 1;
+          line = line.substring(openIdx + 1);
+        } else {
+          continue;
+        }
+      }
+
+      // Handle arrow body reset
+      if (inArrowBody && line.contains(';')) {
+        inArrowBody = false;
+      }
+
+      // Check if we are at depth 1 and can extract members on this line
+      if (depth == 1 && parenDepth == 0 && !inArrowBody) {
+        // 1. Getters: e.g. bool get isNullOrEmpty => ...;
+        final getterMatch = getterRegex.firstMatch(line);
+        if (getterMatch != null) {
+          final name = getterMatch.group(1);
+          if (name != null &&
+              name.length >= 2 &&
+              !_reservedKeywords.contains(name)) {
+            members.add(name);
+          }
+        }
+
+        // 2. Setters: e.g. set title(String val) => ...;
+        final setterMatch = setterRegex.firstMatch(line);
+        if (setterMatch != null) {
+          final name = setterMatch.group(1);
+          if (name != null &&
+              name.length >= 2 &&
+              !_reservedKeywords.contains(name)) {
+            members.add(name);
+          }
+        }
+
+        // 3. Static fields: e.g. static const String key = '...'; or static int count;
+        bool isStaticField = false;
+        if (line.contains(RegExp(r'\bstatic\b')) &&
+            !line.contains(RegExp(r'\bget\b')) &&
+            !line.contains(RegExp(r'\bset\b'))) {
+          final staticMatch = staticFieldRegex.firstMatch(line);
+          if (staticMatch != null) {
+            final name = staticMatch.group(1);
+            if (name != null &&
+                name.length >= 2 &&
+                !_reservedKeywords.contains(name)) {
+              members.add(name);
+              isStaticField = true;
+            }
+          }
+        }
+
+        // 4. Methods: e.g. void showToast(String msg) { ... } or Future<T?> push<T>(Widget page) =>
+        if (!isStaticField &&
+            !line.contains(RegExp(r'\bget\b')) &&
+            !line.contains(RegExp(r'\bset\b'))) {
+          final firstParenIdx = line.indexOf('(');
+          if (firstParenIdx != -1) {
+            final beforeParen = line.substring(0, firstParenIdx);
+            // Strip any generic parameters right before '(', e.g. `<T>` from `push<T>`
+            final cleanBefore =
+                beforeParen.replaceAll(RegExp(r'<[^>]*>$'), '').trim();
+            final methodMatch =
+                RegExp(r'\b([A-Za-z0-9_$]+)$').firstMatch(cleanBefore);
+            if (methodMatch != null) {
+              final name = methodMatch.group(1);
+              if (name != null &&
+                  name.length >= 2 &&
+                  !_reservedKeywords.contains(name)) {
+                members.add(name);
+              }
+            }
+          }
+        }
+      }
+
+      // Track braces and parentheses character by character
+      for (int c = 0; c < line.length; c++) {
+        final char = line[c];
+        if (char == '{') {
+          depth++;
+        } else if (char == '}') {
+          depth--;
+          if (depth <= 0) {
+            return members.toList();
+          }
+        } else if (char == '(') {
+          parenDepth++;
+        } else if (char == ')') {
+          if (parenDepth > 0) parenDepth--;
+        }
+      }
+
+      // Check if line contains '=>' (arrow function)
+      if (line.contains('=>')) {
+        final arrowIdx = line.indexOf('=>');
+        final semiIdx = line.indexOf(';', arrowIdx);
+        if (semiIdx == -1) {
+          inArrowBody = true;
+        }
+      }
+    }
+
+    return members.toList();
   }
 
   List<TodoItemResult> _scanTodos(
