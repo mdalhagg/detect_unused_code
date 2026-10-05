@@ -148,7 +148,36 @@ String getRelativePath(String fullPath, String basePath) {
     }
     return rel;
   }
-  return normFull;
+
+  // Handle Windows 8.3 short paths (e.g. DEV74~1.THA vs dev74.THARWAT)
+  try {
+    final realFull = File(fullPath).existsSync()
+        ? File(fullPath).resolveSymbolicLinksSync()
+        : fullPath;
+    final realBase = Directory(basePath).existsSync()
+        ? Directory(basePath).resolveSymbolicLinksSync()
+        : basePath;
+    final canonRealFull = canonicalizePath(realFull);
+    final canonRealBase = canonicalizePath(realBase);
+    if (canonRealFull.startsWith(canonRealBase)) {
+      final normRealFull = realFull.replaceAll(r'\', '/');
+      var rel = normRealFull.substring(canonRealBase.length);
+      if (rel.startsWith('/')) {
+        rel = rel.substring(1);
+      }
+      return rel;
+    }
+  } catch (_) {}
+
+  // Guarantee that the result never contains an absolute drive prefix like 'C:'
+  var safe = normFull.replaceFirst(RegExp(r'^[a-zA-Z]:[/\\].*?'), '');
+  if (normFull.startsWith(RegExp(r'^[a-zA-Z]:'))) {
+    safe = normFull.substring(2);
+  }
+  if (safe.startsWith('/')) {
+    safe = safe.substring(1);
+  }
+  return safe;
 }
 
 /// Automatically searches for and resolves the project root directory.
@@ -191,19 +220,34 @@ FileSystemEntity resolveTargetPath(
 
   final cleaned = cleanInputPath(input);
 
+  // Check direct path first (especially when absolute)
+  try {
+    final directDir = Directory(cleaned);
+    if (directDir.existsSync()) {
+      return directDir;
+    }
+  } catch (_) {}
+
+  try {
+    final directFile = File(cleaned);
+    if (directFile.existsSync()) {
+      return directFile;
+    }
+  } catch (_) {}
+
   final candidates = [
-    Directory('${Directory.current.path}/$cleaned'),
-    File('${Directory.current.path}/$cleaned'),
     Directory('${projectRoot.path}/$cleaned'),
     File('${projectRoot.path}/$cleaned'),
-    Directory(cleaned),
-    File(cleaned),
+    Directory('${Directory.current.path}/$cleaned'),
+    File('${Directory.current.path}/$cleaned'),
   ];
 
   for (final c in candidates) {
-    if (c.existsSync()) {
-      return c;
-    }
+    try {
+      if (c.existsSync()) {
+        return c;
+      }
+    } catch (_) {}
   }
 
   if (!isJson) {
@@ -289,32 +333,141 @@ List<String> extractCommentedClasses(String content) {
 }
 
 /// Strips all block comments, single-line comments, and string literals from [content]
-/// while preserving exact line offsets.
+/// while preserving exact line offsets and character positions.
 String stripCommentsAndStrings(String content) {
-  // 1. Multi-line block comments /* ... */ (preserve line count)
-  String clean = content.replaceAllMapped(
-    RegExp(r'/\*[\s\S]*?\*/'),
-    (m) => '\n' * (m.group(0)!.split('\n').length - 1),
-  );
+  final buffer = StringBuffer();
+  int idx = 0;
+  final len = content.length;
 
-  // 2. Triple quoted multi-line strings ''' or """ (preserve line count)
-  clean = clean.replaceAllMapped(
-    RegExp(r"'''[\s\S]*?'''"),
-    (m) => '\n' * (m.group(0)!.split('\n').length - 1),
-  );
-  clean = clean.replaceAllMapped(
-    RegExp(r'"""[\s\S]*?"""'),
-    (m) => '\n' * (m.group(0)!.split('\n').length - 1),
-  );
+  while (idx < len) {
+    final c = content[idx];
 
-  // 3. Single-line strings '...' and "..."
-  clean = clean.replaceAll(RegExp(r"'(?:[^'\r\n\\]|\\.)*'"), "''");
-  clean = clean.replaceAll(RegExp(r'"(?:[^"\r\n\\]|\\.)*"'), '""');
+    // Check for comments
+    if (c == '/' && idx + 1 < len) {
+      final next = content[idx + 1];
 
-  // 4. Single-line comments //
-  clean = clean.replaceAll(RegExp(r'//[^\r\n]*'), '');
+      // Single-line comment: //
+      if (next == '/') {
+        idx += 2;
+        while (idx < len && content[idx] != '\n' && content[idx] != '\r') {
+          buffer.write(' ');
+          idx++;
+        }
+        continue;
+      }
 
-  return clean;
+      // Multi-line block comment: /* ... */
+      if (next == '*') {
+        buffer.write('  ');
+        idx += 2;
+        int depth = 1;
+        while (idx < len && depth > 0) {
+          if (content[idx] == '/' && idx + 1 < len && content[idx + 1] == '*') {
+            depth++;
+            buffer.write('  ');
+            idx += 2;
+            continue;
+          }
+          if (content[idx] == '*' && idx + 1 < len && content[idx + 1] == '/') {
+            depth--;
+            buffer.write('  ');
+            idx += 2;
+            continue;
+          }
+          if (content[idx] == '\n') {
+            buffer.write('\n');
+          } else if (content[idx] == '\r') {
+            buffer.write('\r');
+          } else {
+            buffer.write(' ');
+          }
+          idx++;
+        }
+        continue;
+      }
+    }
+
+    // Check for raw strings: r'...' or r"..."
+    bool isRaw = false;
+    if ((c == 'r' || c == 'R') &&
+        idx + 1 < len &&
+        (content[idx + 1] == "'" || content[idx + 1] == '"')) {
+      isRaw = true;
+      buffer.write(' ');
+      idx++;
+    }
+
+    // Check for string literals: ''' or """ or ' or "
+    if (idx < len && (content[idx] == "'" || content[idx] == '"')) {
+      final quote = content[idx];
+      final isTriple = idx + 2 < len &&
+          content[idx + 1] == quote &&
+          content[idx + 2] == quote;
+
+      if (isTriple) {
+        buffer.write('   ');
+        idx += 3;
+        while (idx < len) {
+          if (content[idx] == quote &&
+              idx + 2 < len &&
+              content[idx + 1] == quote &&
+              content[idx + 2] == quote) {
+            buffer.write('   ');
+            idx += 3;
+            break;
+          }
+          if (!isRaw && content[idx] == '\\' && idx + 1 < len) {
+            if (content[idx + 1] == '\n') {
+              buffer.write(' \n');
+            } else {
+              buffer.write('  ');
+            }
+            idx += 2;
+            continue;
+          }
+          if (content[idx] == '\n') {
+            buffer.write('\n');
+          } else if (content[idx] == '\r') {
+            buffer.write('\r');
+          } else {
+            buffer.write(' ');
+          }
+          idx++;
+        }
+        continue;
+      } else {
+        // Single-line string
+        buffer.write(' ');
+        idx++;
+        while (idx < len) {
+          final cur = content[idx];
+          if (cur == quote) {
+            buffer.write(' ');
+            idx++;
+            break;
+          }
+          if (cur == '\n' || cur == '\r') {
+            // Unclosed string on newline
+            break;
+          }
+          if (!isRaw && cur == '\\' && idx + 1 < len) {
+            buffer.write('  ');
+            idx += 2;
+            continue;
+          }
+          buffer.write(' ');
+          idx++;
+        }
+        continue;
+      }
+    }
+
+    // Regular code character
+    buffer.write(c);
+    idx++;
+  }
+
+  return buffer.toString();
 }
 
 /// Counts how many times [className] is referenced within its declaring file,

@@ -1,3 +1,27 @@
+## 2.1.0
+
+- **Phased, Multi-Stage Cleanup Pipeline:**
+  - Refactored `--clean-all` from a monolithic single-pass into a sequential 7-stage pipeline (Commented Files → Dead Classes → Dead Blocks → Internal Classes Privatization → TODOs → Unused Imports → Dead Code).
+  - Automatically re-audits project AST and line offsets between each cleanup stage to guarantee 100% surgical accuracy and prevent offset drift.
+  - Appends intermediate snapshot states incrementally into backup manifests.
+- **Smart Dart Extension Member Awareness:**
+  - Implemented deep AST inspection for Dart extensions, parsing declared getters, setters, methods, and static fields.
+  - Extensions are now checked for cross-file member references, preventing false-positive "unused extension" flags when extension methods or properties are used without referencing the extension name explicitly.
+- **Automated Constructor Key Cleanup in Privatized Classes:**
+  - Automatically strips unused `super.key` and `Key? key` parameters and super initializers from constructors of privatized `_ClassName` widgets when no call sites pass `key:`, preventing `unused_element_parameter` analyzer warnings.
+- **Enhanced Directive & File Boundary Parsing:**
+  - Robust dangling URI directive cleanup handling single-line and multi-line `import`/`export`/`part` statements with exact URI matching.
+  - String- and comment-aware block boundary scanner (`_findDeclarationEndLine`) that ignores braces inside single, double, triple-quoted strings and block comments.
+  - Unbalanced comment marker check before removing dead blocks to safeguard file syntax integrity.
+- **Windows Path & Character-by-Character Parser Robustness:**
+  - Supported Windows 8.3 short paths resolution via symbolic link evaluation and sanitized drive prefixes.
+  - Re-implemented `stripCommentsAndStrings` using a high-performance character-by-character scanner handling nested block comments, raw strings, and escapes while preserving exact line and column offsets.
+- **CLI Flags & Target Scope Enhancements:**
+  - Added `--version` and `-V` flags to quickly print the installed package version.
+  - Added `--clean-backups` command to easily wipe all snapshot archives in `.detect_unused/backups/`.
+  - Added `--keep-backup` flag to retain snapshot archives upon restore.
+  - Automatic target project root resolution when passing a folder or file path argument.
+
 ## 2.0.1
 
 - **Fix:** Exclude `.detect_unused/` and backup snapshot directories from file scanning and analysis to prevent scanning cached backups.

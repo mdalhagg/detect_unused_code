@@ -221,18 +221,31 @@ detect_unused --clean-all -y
 # 5. List all snapshot backups
 detect_unused --backups
 
-# 6. Rollback to any previous backup snapshot
+# 6. Rollback to any previous backup snapshot (auto-cleans snapshot upon restore to save space)
 detect_unused --restore 1
 
 # 7. Rollback to the most recent backup
 detect_unused --restore-latest
+
+# 8. Rollback while keeping the snapshot archive on disk
+detect_unused --restore 1 --keep-backup
+
+# 9. Wipe all snapshot archives to reclaim disk space
+detect_unused --clean-backups
+
+# 10. Display package version
+detect_unused --version
 ```
 
 ### 🛡️ Defensive Safety Architecture
-1. **Automatic Snapshot Backups**: Before any files are touched, an isolated copy is saved to `.detect_unused/backups/`.
-2. **Instant Rollback**: If you ever want to revert, run `detect_unused --restore <id>` to instantly recover files.
-3. **Automatic `.gitignore` Protection**: `.detect_unused/` is automatically appended to your `.gitignore`.
-4. **Post-Cleanup Health Verification**: The tool automatically verifies `dart analyze` after cleaning. If compiler errors are detected, it prompts to auto-rollback immediately.
+1. **Multi-Stage Phased Pipeline**: `--clean-all` runs in 7 discrete stages (Commented Files → Dead Classes → Dead Blocks → Internal Classes Privatization → TODOs → Unused Imports → Dead Code), re-auditing AST and line offsets between stages to maintain surgical precision.
+2. **Automatic Snapshot Backups**: Before any files are touched, an isolated copy is saved to `.detect_unused/backups/`.
+3. **Instant Rollback**: If you ever want to revert, run `detect_unused --restore <id>` or `detect_unused --restore-latest` to instantly recover files.
+4. **Auto-Clean Snapshot on Restore**: The restored snapshot folder is automatically removed upon successful recovery to reclaim disk space (override with `--keep-backup`).
+5. **Smart Dart Extension Awareness**: Scans declared getters, setters, methods, and static fields in extensions to prevent false-positive flags when extension members are used across files.
+6. **Constructor Key Cleanup**: Strips redundant `super.key` and `Key? key` parameters when privatizing internal widget classes to prevent `unused_element_parameter` compiler warnings.
+7. **Automatic `.gitignore` Protection**: `.detect_unused/` is automatically appended to your `.gitignore`.
+8. **Post-Cleanup Health Verification**: The tool automatically verifies `dart analyze` after cleaning. If compiler errors are detected, it prompts to auto-rollback immediately.
 
 ---
 
@@ -241,7 +254,7 @@ detect_unused --restore-latest
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--path=<dir>` / `--url=<dir>` | - | `.` | Target directory or file to audit |
-| `--clean-all` | `--clean` | `false` | Remediate all safe issues with auto-backup & prompt |
+| `--clean-all` | `--clean` | `false` | Remediate all safe issues with phased auto-backup & prompt |
 | `--clean-commented-files` | - | `false` | Delete 100% commented-out files |
 | `--clean-dead-blocks` | - | `false` | Remove dead commented code blocks |
 | `--clean-dead-classes` | - | `false` | Remove zero-usage dead classes and widgets |
@@ -253,8 +266,10 @@ detect_unused --restore-latest
 | `--yes` | `-y` | `false` | Skip interactive confirmation prompt |
 | `--no-backup` | - | `false` | Bypass automatic snapshot backup (not recommended) |
 | `--backups` | `--list-backups` | `false` | List all available snapshot backups |
-| `--restore <id>` | - | - | Restore active project files from backup ID |
+| `--clean-backups` | - | `false` | Delete all snapshot archives from disk |
+| `--restore <id>` | - | - | Restore active project files from backup ID (auto-cleans snapshot) |
 | `--restore-latest` | - | `false` | Restore project files from the latest snapshot |
+| `--keep-backup` | - | `false` | Retain snapshot archive after successful restoration |
 | `--todos-only` | - | `false` | Audit only TODO tasks and pending notes |
 | `--diagnostics-only` | `--analyzer-only` | `false` | Audit only Dart analyzer diagnostics |
 | `--unused-classes` | `--classes` | `false` | Audit only unused/dead classes |
@@ -267,6 +282,7 @@ detect_unused --restore-latest
 | `--json [filename]` | - | `false` | Save analysis report to a `.json` file (default: `detect_unused_code.json`) |
 | `--verbose` | `-v` | `false` | Print samples of detected commented blocks |
 | `--help` | `-h` | - | Display help message and exit |
+| `--version` | `-V` | - | Display package version and exit |
 
 ---
 
