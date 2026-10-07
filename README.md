@@ -1,8 +1,10 @@
 # detect_unused_code
 
 [![pub package](https://img.shields.io/pub/v/detect_unused_code.svg)](https://pub.dev/packages/detect_unused_code)
+[![Pub Points](https://img.shields.io/pub/points/detect_unused_code?color=2E8B57)](https://pub.dev/packages/detect_unused_code/score)
 [![Dart SDK](https://img.shields.io/badge/dart-%3E%3D2.17.0%20%3C4.0.0-blue.svg)](https://dart.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/mdalhagg/detect_unused_code?style=flat&color=1877F2)](https://github.com/mdalhagg/detect_unused_code/stargazers)
 
 A fast, zero-dependency Dart and Flutter dead code detector and automated remediation engine. Safely detects and cleans dead classes, unused widgets, commented-out files, dead code blocks, unused imports, unused variables, and pending TODO tasks across Dart and Flutter projects.
 
@@ -127,7 +129,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^2.1.1
+  detect_unused_code: ^2.1.2
 ```
 
 ---
@@ -436,6 +438,22 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   ```bash
   detect_unused --version
   ```
+
+---
+
+## Frequently Asked Questions (FAQ)
+
+### How do I find and remove unused widgets in Flutter?
+Run `detect_unused` in your project root. The tool scans all `.dart` files, builds an AST model of all widget declarations, and flags widgets with 0 cross-file references under `【4. Dead Classes / Elements】`. You can remove them automatically with `detect_unused --clean-dead-classes`.
+
+### Why doesn't standard `flutter analyze` detect unused public classes?
+Dart treats all public classes (classes without a leading `_`) as public API surface that could theoretically be consumed by external packages. As a result, the compiler never marks public classes as unused. `detect_unused_code` solves this by performing full project cross-reference analysis across your workspace.
+
+### Can I run `detect_unused_code` in CI/CD pipelines?
+Yes! Add `dart run detect_unused_code` to your GitHub Actions or GitLab CI. If dead code or unreferenced classes are found, the CLI returns an exit code of `1`, failing the pipeline and keeping your repository clean.
+
+### Is the automated cleanup safe?
+Yes. Every cleanup command automatically creates an isolated snapshot in `.detect_unused/backups/`. You can immediately rollback using `detect_unused --restore-latest`. Additionally, you can run `detect_unused --clean-all --dry-run` to preview all proposed modifications before touching your disk.
 
 ---
 
