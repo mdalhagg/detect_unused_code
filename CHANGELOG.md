@@ -1,3 +1,11 @@
+## 2.1.2
+
+- Added automated GitHub Actions CI workflow (`.github/workflows/ci.yml`) verifying formatting, static analysis, and dry-run publishing on PRs and pushes.
+- Added GitHub issue templates for bug reports and feature requests (`.github/ISSUE_TEMPLATE/`).
+- Added open-source community standards guide (`CONTRIBUTING.md`).
+- Added SEO-optimized FAQ section and repository status badges to `README.md`.
+- Updated package version to `2.1.2`.
+
 ## 2.1.1
 
 - Comprehensive documentation review and refinements across `README.md`.
