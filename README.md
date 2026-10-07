@@ -4,7 +4,7 @@
 [![Dart SDK](https://img.shields.io/badge/dart-%3E%3D2.17.0%20%3C4.0.0-blue.svg)](https://dart.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 
-A static analysis tool and Dart library to detect dead classes, unused widgets, commented-out files, dead code blocks, unused imports, unused variables, and pending TODO tasks across Dart and Flutter projects.
+A fast, zero-dependency Dart and Flutter dead code detector and automated remediation engine. Safely detects and cleans dead classes, unused widgets, commented-out files, dead code blocks, unused imports, unused variables, and pending TODO tasks across Dart and Flutter projects.
 
 Works with zero external dependencies, runs on any Dart SDK from `2.17.0` up to Dart `3.x` / `4.x`, and supports both CLI usage and programmatic Dart API.
 
@@ -127,7 +127,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^1.3.0
+  detect_unused_code: ^2.1.1
 ```
 
 ---
@@ -195,9 +195,9 @@ detect_unused -v
 
 ---
 
-## 🧹 Automated Cleanup & Remediation (New in 2.0.0)
+## 🧹 Automated Cleanup & Remediation Engine (v2.0+)
 
-Version `2.0.0` introduces a safe, defensive code cleaning engine. It can automatically remediate all detected issues while maintaining snapshot backups and verified compilation health:
+Versions `2.0+` and `2.1+` introduce a defensive code remediation engine. It automatically resolves detected issues across a phased 7-stage pipeline while maintaining snapshot backups and verified compilation health:
 
 ```bash
 # 1. Remediate ALL detected safe issues with automatic snapshot backup & confirmation
@@ -383,16 +383,16 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   detect_unused --json=report.json
   ```
 
-### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (الجديدة في 2.0.0):
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.1+):
 - **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
   ```bash
   detect_unused --clean-all
   ```
-- **معاينة خطة التنظيف فقط بدون تعديل أي ملف في القرص (محاكاة):**
+- **معاينة خطة التنظيف فقط دون تعديل أي ملف في القرص (محاكاة):**
   ```bash
   detect_unused --clean-all --dry-run
   ```
-- **تنظيف نوع محدد فقط:**
+- **تنظيف فئة معينة بشكل مستقل:**
   ```bash
   # حذف الملفات المعلقة بالكامل (100% comments):
   detect_unused --clean-commented-files
@@ -400,7 +400,7 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   # حذف الكتل المعلقة الكبيرة من الملفات الحية:
   detect_unused --clean-dead-blocks
 
-  # حذف الكلاسات المهجورة غير المستخدمة نهائياً:
+  # حذف الكلاسات والـ Widgets المهجورة غير المستخدمة نهائياً:
   detect_unused --clean-dead-classes
 
   # تحويل الكلاسات الداخلية إلى كلاسات خاصة (_ClassName):
@@ -409,18 +409,32 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   # تنظيف أسطر المهام المعلقة (TODO):
   detect_unused --clean-todos
 
-  # تنظيف الاستيرادات غير المستخدمة:
+  # تنظيف الاستيرادات غير المستخدمة والمكررة:
   detect_unused --clean-unused-imports
+
+  # تنظيف الأكواد الميتة والتعبيرات غير المجدية (مثل ?. الزائدة):
+  detect_unused --clean-dead-code
   ```
-- **عرض قائمة النسخ الاحتياطية المحفوظة:**
+- **إدارة النسخ الاحتياطية والاسترجاع الفوري:**
   ```bash
+  # عرض قائمة النسخ الاحتياطية المحفوظة:
   detect_unused --backups
-  ```
-- **استرجاع المشروع إلى نسخة احتياطية سابقة:**
-  ```bash
-  detect_unused --restore 1
-  # أو استرجاع أحدث نسخة مباشرة:
+
+  # استرجاع المشروع إلى أحدث نسخة احتياطية:
   detect_unused --restore-latest
+
+  # استرجاع المشروع إلى نسخة محددة برقم الـ ID:
+  detect_unused --restore 1
+
+  # استرجاع نسخة مع الاحتفاظ بالأرشيف في القرص:
+  detect_unused --restore 1 --keep-backup
+
+  # مسح كافة أرشيفات النسخ الاحتياطية لتوفير مساحة القرص:
+  detect_unused --clean-backups
+  ```
+- **عرض إصدار الحزمة:**
+  ```bash
+  detect_unused --version
   ```
 
 ---

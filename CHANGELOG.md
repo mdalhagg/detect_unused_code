@@ -1,3 +1,10 @@
+## 2.1.1
+
+- Comprehensive documentation review and refinements across `README.md`.
+- Updated recommended dependency declaration to `^2.1.1`.
+- Added complete coverage for cleanup flags (`--clean-dead-code`, `--clean-backups`, `--keep-backup`, `--version`) in Arabic & English documentation.
+- Improved clarity of safety architecture and step-by-step CLI usage examples.
+
 ## 2.1.0
 
 - **Phased, Multi-Stage Cleanup Pipeline:**
