@@ -56,6 +56,8 @@ export 'src/packages/dep_auditor.dart'
     show DependencyAuditor, DepProgressCallback;
 export 'src/cleaners/dep_cleaner.dart'
     show DependencyCleaner, CleanDependenciesResult;
+export 'src/cleaners/staged_cleaner.dart'
+    show StagedCleanupRunner, CleanupStage;
 export 'src/reporters/markdown_reporter.dart' show MarkdownReporter;
 export 'src/tui/interactive_tui.dart' show InteractiveTui;
 export 'src/version.dart' show packageVersion;

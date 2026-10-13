@@ -4,9 +4,7 @@ import '../assets/asset_auditor.dart';
 import '../assets/asset_models.dart';
 import '../auditor.dart';
 import '../backup/backup_manager.dart';
-import '../cleaners/asset_cleaner.dart';
-import '../cleaners/code_cleaner.dart';
-import '../cleaners/dep_cleaner.dart';
+import '../cleaners/staged_cleaner.dart';
 import '../models.dart';
 import '../packages/dep_auditor.dart';
 import '../packages/package_dep_models.dart';
@@ -47,13 +45,13 @@ class InteractiveTui {
 
     final auditor =
         UnusedCodeAuditor(projectRoot: projectRoot, options: options);
-    final report = auditor.run();
+    var report = auditor.run();
 
     final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
-    final depReport = depAuditor.run();
+    var depReport = depAuditor.run();
 
     final assetAuditor = AssetAuditor(workspaceRoot: projectRoot);
-    final assetReport = assetAuditor.run();
+    var assetReport = assetAuditor.run();
 
     bool running = true;
     while (running) {
@@ -92,6 +90,8 @@ class InteractiveTui {
             assetReport: assetReport,
             dryRun: true,
           );
+          print('\nPress [Enter] to return to dashboard...');
+          stdin.readLineSync();
           break;
 
         case 'C':
@@ -101,13 +101,21 @@ class InteractiveTui {
             assetReport: assetReport,
             dryRun: false,
           );
-          print('\nPress [Enter] to continue...');
+          print('\n⏳ Refreshing workspace audit...');
+          report = auditor.run();
+          depReport = depAuditor.run();
+          assetReport = assetAuditor.run();
+          print('Press [Enter] to return to dashboard...');
           stdin.readLineSync();
           break;
 
         case 'U':
           _executeUndo();
-          print('\nPress [Enter] to continue...');
+          print('\n⏳ Refreshing workspace audit...');
+          report = auditor.run();
+          depReport = depAuditor.run();
+          assetReport = assetAuditor.run();
+          print('Press [Enter] to return to dashboard...');
           stdin.readLineSync();
           break;
 
@@ -266,113 +274,26 @@ class InteractiveTui {
     required AssetAnalysisReport assetReport,
     required bool dryRun,
   }) {
-    final cleaner = CodeCleaner(projectRoot);
-    final depCleaner = DependencyCleaner(workspaceRoot: projectRoot);
-    final assetCleaner = AssetCleaner(workspaceRoot: projectRoot);
+    final runner = StagedCleanupRunner(
+      projectRoot: projectRoot,
+      targetArg: options.targetPath,
+      commentThreshold: options.commentThreshold,
+      minBlockLines: options.minBlockLines,
+      verbose: options.verbose,
+      cleanDeadClasses: _selected[1] == true,
+      cleanDeadBlocks: _selected[2] == true,
+      cleanCommented: _selected[3] == true,
+      cleanPackages: _selected[4] == true,
+      cleanAssets: _selected[5] == true,
+      cleanTodos: _selected[6] == true,
+      cleanUnusedImports: _selected[7] == true,
+      cleanDeadCode: _selected[8] == true,
+      dryRun: dryRun,
+      isYes: true, // User triggered action directly from the interactive menu
+      noBackup: false,
+    );
 
-    final modeText = dryRun ? '🔍 SIMULATION / DRY RUN' : '⚡ EXECUTING CLEANUP';
-    print('\n$modeText...');
-
-    int totalModified = 0;
-    int totalDeleted = 0;
-
-    // 1. Commented Files
-    if (_selected[3] == true && report.fullyCommentedFiles.isNotEmpty) {
-      final res = cleaner.cleanCommentedFiles(
-        report.fullyCommentedFiles,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalDeleted += res.deletedFiles.length;
-      print('  🗑️ Fully commented files deleted: ${res.deletedFiles.length}');
-    }
-
-    // 2. Dead Classes
-    if (_selected[1] == true && report.deadClasses.isNotEmpty) {
-      final res = cleaner.cleanDeadClasses(
-        report.deadClasses,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalModified += res.modifiedFiles.length;
-      totalDeleted += res.deletedFiles.length;
-      print('  💀 Dead classes removed: ${res.totalItemsCleaned}');
-    }
-
-    // 3. Dead Blocks
-    if (_selected[2] == true && report.filesWithCommentBlocks.isNotEmpty) {
-      final res = cleaner.cleanDeadBlocks(
-        report.filesWithCommentBlocks,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalModified += res.modifiedFiles.length;
-      print('  📦 Dead blocks stripped: ${res.totalItemsCleaned}');
-    }
-
-    // 4. Unused Imports
-    if (_selected[7] == true && report.unusedImports.isNotEmpty) {
-      final res = cleaner.cleanUnusedImports(
-        report.unusedImports,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalModified += res.modifiedFiles.length;
-      print('  🧹 Unused imports cleaned: ${res.totalItemsCleaned}');
-    }
-
-    // 5. Dead Code & Null Aware
-    if (_selected[8] == true && report.deadCodeAndExpressions.isNotEmpty) {
-      final res = cleaner.cleanDeadNullAware(
-        report.deadCodeAndExpressions,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalModified += res.modifiedFiles.length;
-      print(
-          '  💀 Dead null-aware expressions simplified: ${res.totalItemsCleaned}');
-    }
-
-    // 6. TODOs
-    if (_selected[6] == true && report.todos.isNotEmpty) {
-      final res = cleaner.cleanTodos(
-        report.todos,
-        dryRun: dryRun,
-        createBackup: !dryRun,
-      );
-      totalModified += res.modifiedFiles.length;
-      print('  📋 TODO comments removed: ${res.totalItemsCleaned}');
-    }
-
-    // 7. Assets
-    if (_selected[5] == true && assetReport.unusedAssets.isNotEmpty) {
-      final res = assetCleaner.clean(
-        unusedAssets: assetReport.unusedAssets,
-        dryRun: dryRun,
-      );
-      totalDeleted += res.deletedFilesCount;
-      print(
-          '  🖼️ Unused assets purged: ${res.deletedFilesCount} (${res.formattedBytesFreed})');
-    }
-
-    // 8. Packages
-    if (_selected[4] == true && depReport.issues.isNotEmpty) {
-      final res = depCleaner.clean(
-        issues: depReport.issues,
-        dryRun: dryRun,
-      );
-      totalModified += res.updatedPubspecsCount;
-      print('  📦 Unused packages pruned: ${res.removedCount}');
-    }
-
-    if (dryRun) {
-      print('\n✨ Dry run simulation complete. No files on disk were modified.');
-    } else {
-      print('\n🎉 Cleanup completed successfully!');
-      print(
-          '   Total files modified: $totalModified | Total files deleted: $totalDeleted');
-      print('   💡 You can revert anytime with: detect_unused --undo');
-    }
+    runner.run();
   }
 
   void _executeUndo() {

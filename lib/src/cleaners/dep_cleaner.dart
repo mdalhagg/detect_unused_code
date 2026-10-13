@@ -48,6 +48,8 @@ class DependencyCleaner {
   CleanDependenciesResult clean({
     required List<UnusedDependencyItem> issues,
     bool dryRun = false,
+    bool createBackup = true,
+    BackupManifest? sharedBackup,
   }) {
     if (issues.isEmpty) {
       return CleanDependenciesResult(
@@ -77,12 +79,21 @@ class DependencyCleaner {
       );
     }
 
-    // 1. Create backup snapshot of all pubspec.yaml files targeted for modification
+    // 1. Create or append backup snapshot of all pubspec.yaml files targeted for modification
     final filesToBackup = fileMap.values.where((f) => f.existsSync()).toList();
-    final manifest = backupManager.createBackup(
-      action: 'clean-packages',
-      filesToBackup: filesToBackup,
-    );
+    BackupManifest? manifest;
+    if (sharedBackup != null) {
+      backupManager.appendToBackup(
+        sharedBackup,
+        filesToBackup,
+      );
+      manifest = sharedBackup;
+    } else if (createBackup) {
+      manifest = backupManager.createBackup(
+        action: 'clean-packages',
+        filesToBackup: filesToBackup,
+      );
+    }
 
     int updatedPubspecs = 0;
     int totalRemoved = 0;

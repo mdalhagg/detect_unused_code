@@ -52,6 +52,8 @@ class AssetCleaner {
   CleanAssetsResult clean({
     required List<UnusedAssetItem> unusedAssets,
     bool dryRun = false,
+    bool createBackup = true,
+    BackupManifest? sharedBackup,
   }) {
     if (unusedAssets.isEmpty) {
       return CleanAssetsResult(
@@ -90,7 +92,7 @@ class AssetCleaner {
       );
     }
 
-    // 3. Create Backup Snapshot of all files targeted for deletion AND all pubspec.yaml files targeted for modification
+    // 3. Create or append Backup Snapshot of all files targeted for deletion AND all pubspec.yaml files targeted for modification
     final filesToBackup = <File>[];
     final filesMarkedForDeletion = <String>[];
 
@@ -108,11 +110,21 @@ class AssetCleaner {
       }
     }
 
-    final manifest = backupManager.createBackup(
-      action: 'clean-assets',
-      filesToBackup: filesToBackup,
-      filesMarkedForDeletion: filesMarkedForDeletion,
-    );
+    BackupManifest? manifest;
+    if (sharedBackup != null) {
+      backupManager.appendToBackup(
+        sharedBackup,
+        filesToBackup,
+        filesMarkedForDeletion: filesMarkedForDeletion,
+      );
+      manifest = sharedBackup;
+    } else if (createBackup) {
+      manifest = backupManager.createBackup(
+        action: 'clean-assets',
+        filesToBackup: filesToBackup,
+        filesMarkedForDeletion: filesMarkedForDeletion,
+      );
+    }
 
     // 4. Delete physical files from disk & prune empty directories
     for (final item in unusedAssets) {

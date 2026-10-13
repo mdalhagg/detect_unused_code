@@ -1,10 +1,34 @@
-## 3.0.1
+## 3.1.0
 
 - **Interactive TUI Dashboard by Default:**
-  - Launching `detect_unused` or `detect_unused_code` without command-line arguments now automatically opens the Interactive Terminal UI (TUI) Dashboard.
-  - Added `--scan` and `--report` flags for running the standard non-interactive terminal audit report.
-- **pubspec.yaml Description Optimization:**
-  - Optimized package description length to comply strictly with pub.dev guidelines (60 to 180 characters), securing a full 160/160 pub points score.
+  - Running `detect_unused` or `detect_unused_code` without action flags launches the Interactive Terminal UI (TUI) Dashboard directly.
+  - Use `--scan`, `--report`, or `--no-interactive` to run the fast non-interactive terminal audit report.
+- **Unified 9-Stage Health-Verified Remediation Pipeline (`StagedCleanupRunner`):**
+  - Fully unifies cleanup across both Interactive Dashboard (`[C] Clean Selected`) and CLI (`--clean-all`).
+  - **Shared Snapshot Backup:** Creates an automatic snapshot in `.detect_unused/backups/` before any file is touched.
+  - **Fresh AST Re-Auditing:** Re-audits the AST before each stage to guarantee precise syntax node locations.
+  - **Post-Stage Health Verification:** Runs `verifyProjectHealth()` after every individual stage to guarantee code integrity.
+  - **Dangling Directives Auto-Pruning:** Cleans dangling barrel `export` and `import` directives when deleted files leave broken references.
+  - **Final Compiler Verification & Rollback:** Verifies 0 compiler errors at completion and offers immediate automated rollback if issues are detected.
+- **Live Dashboard Re-Auditing:**
+  - TUI dashboard automatically re-analyzes the workspace and updates metrics in real time following cleanup `[C]` or undo `[U]`.
+
+## 3.0.1
+
+- **Restored Fast Console Audit by Default:**
+  - Running `detect_unused` or `detect_unused_code` without flags runs the fast, non-blocking terminal audit report (matching the proven v2.4.0 workflow).
+  - Interactive TUI Dashboard is now opt-in via `--interactive` or `-i`, preventing UI hangs and long waits on massive multi-package codebases.
+- **Unified Multi-Stage Health-Verified Remediation Engine (`StagedCleanupRunner`):**
+  - Re-architected cleanup into a dedicated, safe 9-stage pipeline shared across both CLI (`--clean-all`) and Interactive TUI (`[C] Clean Selected`).
+  - **Staged Execution & AST Re-Auditing:** Re-audits the AST before every stage so dependent code isn't modified using stale syntax positions.
+  - **Post-Stage Health Verification:** Runs `verifyProjectHealth()` after each stage to guarantee the codebase remains compilable.
+  - **Dangling Directives Pruning:** Automatically strips dangling `export` and `import` directives when deleted files leave broken references.
+  - **Unified Snapshot Backup:** Preserves all target files in a shared snapshot under `.detect_unused/backups/`.
+  - **Post-Remediation Compiler Verification & Rollback:** Verifies 0 compiler errors at completion; offers immediate automated rollback if issues are detected.
+- **Live Dashboard Re-Auditing:**
+  - TUI dashboard now automatically re-analyzes the workspace and updates metrics in real time following cleanup `[C]` or undo `[U]`.
+- **pubspec.yaml Optimization:**
+  - Description length tuned between 60 and 180 characters for a full 160/160 pub points score on pub.dev.
 
 ## 3.0.0
 
