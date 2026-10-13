@@ -197,9 +197,53 @@ detect_unused -v
 
 ---
 
-## 🧹 Automated Cleanup & Remediation Engine (v2.0+ / v2.2+ / v2.3+)
+## 🎛️ Interactive Terminal Dashboard & Instant Rollback (v3.0.0)
 
-Versions `2.0+`, `2.2+`, and `2.3+` introduce a defensive code remediation engine. It automatically resolves detected issues across a phased 9-stage pipeline while maintaining snapshot backups and verified compilation health:
+Version `3.0.0` introduces a powerful **Interactive Terminal UI (TUI)** and **Instant Undo**:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔍 DETECT_UNUSED_CODE - INTERACTIVE CONTROL DASHBOARD (v3.0.0)         │
+│ ⚡ Powered by @mdalhagg | https://github.com/mdalhagg                  │
+├────────────────────────────────────────────────────────────────────────┤
+│ [1] [X] 💀 Dead Classes & Widgets       (3 found)                      │
+│ [2] [X] 📦 Dead Commented Code Blocks   (2 files)                      │
+│ [3] [ ] 🚫 100% Commented Files         (1 file)                       │
+│ [4] [X] 🔒 Privatize Internal Classes   (1 class)                      │
+│ [5] [ ] 📋 TODO Pending Tasks           (5 notes)                      │
+│ [6] [X] 🧹 Unused & Redundant Imports   (8 imports)                    │
+│ [7] [X] 🖼️ Unused Media Assets & Fonts   (4 files, 1.2 MB reclaimable)  │
+│ [8] [X] 📦 Unused External Packages     (2 packages)                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Commands:                                                              │
+│  [1-8] Toggle category    [A] Toggle All         [V] View item details │
+│  [D] Preview (Dry Run)    [C] Clean Selected     [U] Undo last action  │
+│  [M] Export Markdown      [Q] Quit                                     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+```bash
+# Launch the Interactive Terminal UI (TUI) Dashboard
+detect_unused --interactive
+# or short alias:
+detect_unused -i
+
+# Instant single-step rollback of the latest cleanup snapshot:
+detect_unused --undo
+# or simply:
+detect_unused undo
+
+# Generate a CI/CD GitHub Flavored Markdown (GFM) summary report:
+detect_unused --markdown
+# or save to a custom file:
+detect_unused --markdown=AUDIT_SUMMARY.md
+```
+
+---
+
+## 🧹 Automated Cleanup & Remediation Engine (v2.0+ / v2.2+ / v2.3+ / v3.0+)
+
+Versions `2.0+`, `2.2+`, `2.3+`, and `3.0+` introduce a defensive code remediation engine. It automatically resolves detected issues across a phased 9-stage pipeline while maintaining snapshot backups and verified compilation health:
 
 ```bash
 # 1. Remediate ALL detected safe issues with automatic snapshot backup & confirmation
@@ -222,22 +266,25 @@ detect_unused --clean-packages           # Removes unused and duplicate external
 # 4. Skip confirmation prompt for CI/CD or automated scripts
 detect_unused --clean-all -y
 
-# 5. List all snapshot backups
+# 5. Instant single-step rollback of the latest cleanup
+detect_unused --undo
+
+# 6. List all snapshot backups
 detect_unused --backups
 
-# 6. Rollback to any previous backup snapshot (auto-cleans snapshot upon restore to save space)
+# 7. Rollback to any previous backup snapshot (auto-cleans snapshot upon restore to save space)
 detect_unused --restore 1
 
-# 7. Rollback to the most recent backup
+# 8. Rollback to the most recent backup
 detect_unused --restore-latest
 
-# 8. Rollback while keeping the snapshot archive on disk
+# 9. Rollback while keeping the snapshot archive on disk
 detect_unused --restore 1 --keep-backup
 
-# 9. Wipe all snapshot archives to reclaim disk space
+# 10. Wipe all snapshot archives to reclaim disk space
 detect_unused --clean-backups
 
-# 10. Display package version
+# 11. Display package version
 detect_unused --version
 ```
 
@@ -454,6 +501,21 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
 
   # تنظيف وحذف التبعيات والمكاتب المهملة والمكررة من ملفات pubspec.yaml:
   detect_unused --clean-packages
+  ```
+- **لوحة التحكم التفاعلية والاسترجاع الفوري (v3.0.0):**
+  ```bash
+  # تشغيل لوحة التحكم التفاعلية (TUI Dashboard) واختيار ما ترغب بحذفه:
+  detect_unused --interactive
+  # أو اختصاراً:
+  detect_unused -i
+
+  # التراجع الفوري بخطوة واحدة عن آخر عملية تنظيف (Undo):
+  detect_unused --undo
+  # أو:
+  detect_unused undo
+
+  # استخراج تقرير Markdown لفرق العمل و CI/CD (GitHub Step Summary):
+  detect_unused --markdown
   ```
 - **إدارة النسخ الاحتياطية والاسترجاع الفوري:**
   ```bash
