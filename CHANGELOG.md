@@ -1,3 +1,36 @@
+## 3.0.0
+
+- **Interactive Terminal UI (TUI) Dashboard (`--interactive` / `-i`):**
+  - Rich interactive terminal control panel wizard featuring zero external dependencies.
+  - Interactive selection and toggles for 8 cleanable categories:
+    - Dead Classes & Widgets
+    - Dead Commented Code Blocks
+    - 100% Commented Files
+    - File-Internal Class Privatization
+    - TODO Pending Tasks
+    - Unused & Redundant Imports
+    - Unused Media Assets & Fonts
+    - Unused & Duplicate Dependencies
+  - Commands supported directly inside the dashboard:
+    - `[1-8]` Toggle individual category checkboxes.
+    - `[A]` Toggle All categories.
+    - `[V]` View item details and breakdown of detected targets.
+    - `[D]` Preview Dry-Run simulation without disk changes.
+    - `[C]` Clean selected categories with automatic pre-modification backup snapshot.
+    - `[U]` Instant Undo of the last action.
+    - `[M]` Export Markdown report to disk.
+    - `[Q]` Quit dashboard.
+  - Attribution banner: `⚡ Powered by @mdalhagg | https://github.com/mdalhagg`.
+- **Instant Single-Step Rollback (`--undo` / `undo`):**
+  - Instant rollback command restoring project files from the most recent backup snapshot in `.detect_unused/backups/`.
+  - Automatically cleans up the snapshot after restoration unless `--keep-backup` is provided.
+- **CI/CD GitHub Flavored Markdown (GFM) Report Generator (`--markdown` / `--report-md`):**
+  - Generates comprehensive Markdown reports designed specifically for CI/CD pipelines and GitHub Actions `$GITHUB_STEP_SUMMARY`.
+  - Summary metrics table with status badges (PASS / ATTENTION), collapsible `<details>` blocks for each issue category, and actionable CLI remediation suggestions.
+  - Attribution and repository links in the report footer.
+- **Automated Test Suite:**
+  - Added test coverage in `test/interactive_and_reporting_test.dart` validating Markdown reporter generation and undo mechanisms.
+
 ## 2.4.0
 
 - **Generated Code Auto-Exclusion Engine:**

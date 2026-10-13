@@ -11,6 +11,8 @@ import 'cleaners/code_cleaner.dart';
 import 'cleaners/dep_cleaner.dart';
 import 'models.dart';
 import 'packages/dep_auditor.dart';
+import 'reporters/markdown_reporter.dart';
+import 'tui/interactive_tui.dart';
 import 'utils.dart';
 import 'version.dart';
 
@@ -72,10 +74,31 @@ class CliRunner {
     final keepBackup = args.contains('--keep-backup');
     final deleteAfterRestore = !keepBackup;
 
-    // 2. Restore latest backup
-    if (args.contains('--restore-latest')) {
+    // 2. Restore latest backup / Instant Undo
+    if (args.contains('--restore-latest') ||
+        args.contains('--undo') ||
+        (args.isNotEmpty && args.first.toLowerCase() == 'undo')) {
       return _restoreLatest(projectRoot,
           deleteAfterRestore: deleteAfterRestore);
+    }
+
+    // 3. Interactive TUI Dashboard
+    if (args.contains('--interactive') || args.contains('-i')) {
+      final tui = InteractiveTui(
+        projectRoot: projectRoot,
+        options: AuditorOptions(targetPath: targetArg),
+      );
+      tui.start();
+      return 0;
+    }
+
+    // 4. Markdown Report for CI/CD
+    final isMarkdown = args.contains('--markdown') ||
+        args.contains('--report-md') ||
+        args.any(
+            (a) => a.startsWith('--markdown=') || a.startsWith('--report-md='));
+    if (isMarkdown) {
+      return _runMarkdownReport(projectRoot, targetArg);
     }
 
     // 3. Restore specific backup by ID
@@ -753,6 +776,73 @@ class CliRunner {
     print(
         '================================================================================');
     return 0;
+  }
+
+  int _runMarkdownReport(Directory projectRoot, String? targetArg) {
+    String mdFileName = 'detect_unused_report.md';
+    bool toStdout = args.contains('--stdout');
+
+    for (int i = 0; i < args.length; i++) {
+      final a = args[i];
+      if (a == '--markdown' || a == '--report-md') {
+        if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+          final next = args[i + 1].trim();
+          if (next.endsWith('.md')) mdFileName = next;
+        }
+      } else if (a.startsWith('--markdown=')) {
+        final val = a.substring('--markdown='.length).trim();
+        if (val.isNotEmpty) {
+          mdFileName = val.endsWith('.md') ? val : '$val.md';
+        }
+      } else if (a.startsWith('--report-md=')) {
+        final val = a.substring('--report-md='.length).trim();
+        if (val.isNotEmpty) {
+          mdFileName = val.endsWith('.md') ? val : '$val.md';
+        }
+      }
+    }
+
+    if (!toStdout) {
+      print('⏳ Generating comprehensive Markdown audit report for CI/CD...');
+    }
+
+    final auditor = UnusedCodeAuditor(
+      projectRoot: projectRoot,
+      options: AuditorOptions(targetPath: targetArg),
+    );
+    final report = auditor.run();
+
+    final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
+    final depReport = depAuditor.run();
+
+    final assetAuditor = AssetAuditor(workspaceRoot: projectRoot);
+    final assetReport = assetAuditor.run();
+
+    final reporter = MarkdownReporter(
+      report: report,
+      projectRoot: projectRoot,
+      depReport: depReport,
+      assetReport: assetReport,
+    );
+
+    if (toStdout) {
+      stdout.write(reporter.generate());
+    } else {
+      final file = reporter.saveToFile(mdFileName);
+      print(
+          '================================================================================');
+      print('✅ Markdown Audit Report generated successfully!');
+      print('📁 File Saved: [${file.path}]');
+      print(
+          '================================================================================');
+    }
+
+    final hasCriticalIssues = report.deadClasses.isNotEmpty ||
+        report.fullyCommentedFiles.isNotEmpty ||
+        depReport.issues.isNotEmpty ||
+        assetReport.unusedAssets.isNotEmpty;
+
+    return hasCriticalIssues ? 1 : 0;
   }
 
   int _executeCleanup({
@@ -1687,7 +1777,16 @@ FILTERING & TUNING:
                            to flag a dead block inside an active file.
                            Default: 15 lines.
 
+INTERACTIVE DASHBOARD & TUI:
+  --interactive, -i        Launch the interactive terminal dashboard wizard (TUI)
+                           featuring live category toggles [1-8], dry-run simulation,
+                           selective cleanup, and instant rollback.
+
 OUTPUT FORMATS:
+  --markdown,              Generate a GitHub-Flavored Markdown (GFM) summary report
+  --report-md [filename]   optimized for CI/CD pipelines (\$GITHUB_STEP_SUMMARY).
+                           (default: DETECT_UNUSED_REPORT.md).
+
   --json [filename]        Save the complete audit report as a .json file in the current
                            working directory (default: detect_unused_code.json) instead of
                            dumping the raw report to the terminal.
@@ -1699,11 +1798,20 @@ OUTPUT FORMATS:
   --version, -V            Display the package version and exit.
 
 EXAMPLES:
-  # Comprehensive audit of current project (all 13 checks)
+  # Launch the interactive terminal UI (TUI) dashboard
+  detect_unused --interactive
+
+  # Comprehensive audit of current project (all checks)
   detect_unused
+
+  # Generate CI/CD Markdown report
+  detect_unused --markdown
 
   # Clean all unused code safely with confirmation and automatic backup
   detect_unused --clean-all
+
+  # Instant single-step rollback of the latest cleanup
+  detect_unused --undo
 
   # Preview cleanup changes without touching disk
   detect_unused --clean-all --dry-run
