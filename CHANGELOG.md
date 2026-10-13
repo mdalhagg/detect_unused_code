@@ -1,3 +1,18 @@
+## 3.1.0
+
+- **Interactive TUI Dashboard by Default:**
+  - Running `detect_unused` or `detect_unused_code` without action flags launches the Interactive Terminal UI (TUI) Dashboard directly.
+  - Use `--scan`, `--report`, or `--no-interactive` to run the fast non-interactive terminal audit report.
+- **Unified 9-Stage Health-Verified Remediation Pipeline (`StagedCleanupRunner`):**
+  - Fully unifies cleanup across both Interactive Dashboard (`[C] Clean Selected`) and CLI (`--clean-all`).
+  - **Shared Snapshot Backup:** Creates an automatic snapshot in `.detect_unused/backups/` before any file is touched.
+  - **Fresh AST Re-Auditing:** Re-audits the AST before each stage to guarantee precise syntax node locations.
+  - **Post-Stage Health Verification:** Runs `verifyProjectHealth()` after every individual stage to guarantee code integrity.
+  - **Dangling Directives Auto-Pruning:** Cleans dangling barrel `export` and `import` directives when deleted files leave broken references.
+  - **Final Compiler Verification & Rollback:** Verifies 0 compiler errors at completion and offers immediate automated rollback if issues are detected.
+- **Live Dashboard Re-Auditing:**
+  - TUI dashboard automatically re-analyzes the workspace and updates metrics in real time following cleanup `[C]` or undo `[U]`.
+
 ## 3.0.1
 
 - **Restored Fast Console Audit by Default:**

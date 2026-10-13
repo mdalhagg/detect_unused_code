@@ -81,17 +81,7 @@ class CliRunner {
           deleteAfterRestore: deleteAfterRestore);
     }
 
-    // 3. Interactive TUI Dashboard (Opt-in via --interactive or -i)
-    if (args.contains('--interactive') || args.contains('-i')) {
-      final tui = InteractiveTui(
-        projectRoot: projectRoot,
-        options: AuditorOptions(targetPath: targetArg),
-      );
-      tui.start();
-      return 0;
-    }
-
-    // 4. Markdown Report for CI/CD
+    // 3. Markdown Report for CI/CD
     final isMarkdown = args.contains('--markdown') ||
         args.contains('--report-md') ||
         args.any(
@@ -270,6 +260,38 @@ class CliRunner {
         noBackup: noBackup,
         onProgress: updateProgress,
       );
+    }
+
+    // 7. Interactive TUI Dashboard (Default behavior when running detect_unused or detect_unused_code without action flags, or with --interactive / -i)
+    final isExplicitScan = args.contains('--scan') ||
+        args.contains('--report') ||
+        args.contains('--no-interactive');
+
+    final hasSpecificFilter = args.contains('--json') ||
+        args.any((a) => a.startsWith('--json=')) ||
+        args.contains('--classes') ||
+        args.contains('--unused-classes') ||
+        args.contains('--commented') ||
+        args.contains('--comments') ||
+        args.contains('--todos-only') ||
+        args.contains('--diagnostics-only');
+
+    final shouldLaunchTui = args.contains('--interactive') ||
+        args.contains('-i') ||
+        (!isExplicitScan && !hasSpecificFilter);
+
+    if (shouldLaunchTui) {
+      final tui = InteractiveTui(
+        projectRoot: projectRoot,
+        options: AuditorOptions(
+          targetPath: targetArg,
+          commentThreshold: commentThreshold,
+          minBlockLines: minBlockLines,
+          verbose: verbose,
+        ),
+      );
+      tui.start();
+      return 0;
     }
 
     // Normal Audit Execution
@@ -1257,8 +1279,11 @@ INTERACTIVE DASHBOARD & TUI:
   --interactive, -i        Launch the interactive terminal dashboard wizard (TUI)
                            featuring live category toggles [1-8], dry-run simulation,
                            selective cleanup, and instant rollback.
+                           (Note: Launches automatically by default when running
+                           `detect_unused` or `detect_unused_code` without flags).
 
-  --scan, --report         Run the standard non-interactive terminal audit report.
+  --scan, --report         Run the standard non-interactive terminal audit report
+                           instead of opening the interactive dashboard.
 
 OUTPUT FORMATS:
   --markdown,              Generate a GitHub-Flavored Markdown (GFM) summary report
@@ -1276,11 +1301,11 @@ OUTPUT FORMATS:
   --version, -V            Display the package version and exit.
 
 EXAMPLES:
-  # Fast, comprehensive static code audit (default behavior):
+  # Launch the interactive terminal UI (TUI) dashboard (default behavior):
   detect_unused
 
-  # Launch the interactive terminal dashboard (TUI):
-  detect_unused --interactive
+  # Run standard non-interactive terminal audit:
+  detect_unused --scan
 
   # Generate CI/CD Markdown report
   detect_unused --markdown

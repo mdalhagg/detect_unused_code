@@ -223,16 +223,17 @@ Version `3.0.0` introduces a powerful **Interactive Terminal UI (TUI)** and **In
 ```
 
 ```bash
-# Fast, comprehensive static code audit (Default behavior):
+# Launch the Interactive Terminal UI (TUI) Dashboard (Default behavior):
 detect_unused
 
 # Or using the full executable name:
 detect_unused_code
 
-# Launch the Interactive Terminal UI (TUI) Dashboard (Opt-in wizard):
+# Run standard non-interactive terminal audit instead of dashboard:
+detect_unused --scan
+
+# Launch dashboard with explicit flag:
 detect_unused --interactive
-# or using short flag:
-detect_unused -i
 
 # Instant single-step rollback of the latest cleanup snapshot:
 detect_unused --undo
