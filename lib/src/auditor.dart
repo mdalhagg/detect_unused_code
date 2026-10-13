@@ -29,7 +29,16 @@ class UnusedCodeAuditor {
     );
 
     final allProjectFiles = walkDartFiles(projectRoot);
-    final targetFiles = walkDartFiles(targetEntity);
+    final rawTargetFiles = walkDartFiles(targetEntity);
+    final targetFiles = rawTargetFiles.where((f) {
+      if (options.excludeGenerated && isGeneratedDartFile(f.path)) {
+        return false;
+      }
+      if (matchesCustomExclude(f.path, options.customExcludes)) {
+        return false;
+      }
+      return true;
+    }).toList();
 
     final runClassAnalysis = options.runClassAnalysis;
     final runCommentAnalysis = options.runCommentAnalysis;
@@ -158,6 +167,10 @@ class UnusedCodeAuditor {
       try {
         content = file.readAsStringSync();
       } catch (_) {
+        continue;
+      }
+
+      if (hasFileKeepUnusedDirective(content)) {
         continue;
       }
 
@@ -324,12 +337,33 @@ class UnusedCodeAuditor {
       final cleanContent = projectCleanMap[canonicalizePath(file.path)];
       if (cleanContent == null) continue;
 
+      String rawContent = '';
+      try {
+        rawContent = file.readAsStringSync();
+      } catch (_) {}
+
+      if (hasFileKeepUnusedDirective(rawContent)) {
+        continue;
+      }
+      final rawLines = rawContent.split('\n');
+
       final lines = cleanContent.split('\n');
       for (int i = 0; i < lines.length; i++) {
         final line = lines[i];
         for (final match in classDeclRegex.allMatches(line)) {
           final className = match.group(6);
           if (className == null || className.length < 2) continue;
+
+          // Check if class is marked with keep-unused directive or annotation
+          if (hasKeepUnusedDirective(rawLines, i)) {
+            continue;
+          }
+
+          // Check if class is protected by Dependency Injection annotations
+          if (options.protectDiClasses &&
+              hasDependencyInjectionAnnotation(rawLines, i)) {
+            continue;
+          }
 
           final isEnum = match.group(2) != null;
           final isMixin = match.group(3) != null;
@@ -695,6 +729,10 @@ class UnusedCodeAuditor {
         continue;
       }
 
+      if (hasFileKeepUnusedDirective(content)) {
+        continue;
+      }
+
       final lines = content.split(RegExp(r'\r?\n'));
       bool inBlockComment = false;
       bool inTripleSingle = false;
@@ -836,6 +874,13 @@ class UnusedCodeAuditor {
             normPath.contains('/.backups') ||
             normPath.endsWith('/backup') ||
             normPath.contains('/backup/')) {
+          continue;
+        }
+
+        if (options.excludeGenerated && isGeneratedDartFile(filePath)) {
+          continue;
+        }
+        if (matchesCustomExclude(filePath, options.customExcludes)) {
           continue;
         }
 

@@ -523,3 +523,152 @@ extension SafeIterableExtension<T> on Iterable<T> {
   /// Returns the first element, or `null` if the iterable is empty.
   T? get safeFirst => isEmpty ? null : first;
 }
+
+/// Suffixes identifying auto-generated Dart source files.
+const generatedFileSuffixes = [
+  '.g.dart',
+  '.freezed.dart',
+  '.mocks.dart',
+  '.config.dart',
+  '.gr.dart',
+  '.gen.dart',
+  '.drift.dart',
+  '.reflectable.dart',
+  '.gql.dart',
+  '.route.dart',
+];
+
+/// Checks whether the given file path represents a generated Dart file.
+bool isGeneratedDartFile(String path) {
+  final lower = path.toLowerCase().replaceAll(r'\', '/');
+  for (final suffix in generatedFileSuffixes) {
+    if (lower.endsWith(suffix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Checks if a file path matches any custom exclude pattern or substring.
+bool matchesCustomExclude(String path, List<String> excludes) {
+  if (excludes.isEmpty) return false;
+  final norm = path.replaceAll(r'\', '/').toLowerCase();
+  for (final raw in excludes) {
+    var pat = raw.trim().replaceAll(r'\', '/').toLowerCase();
+    if (pat.isEmpty) continue;
+    if (pat.startsWith('*')) {
+      final suffix = pat.substring(1);
+      if (norm.endsWith(suffix)) return true;
+    } else if (pat.endsWith('*')) {
+      final prefix = pat.substring(0, pat.length - 1);
+      if (norm.contains(prefix)) return true;
+    } else {
+      if (norm.contains(pat)) return true;
+    }
+  }
+  return false;
+}
+
+/// Checks whether the file header contains a file-level directive to ignore unused code.
+bool hasFileKeepUnusedDirective(String fileContent) {
+  final lines = fileContent.split('\n');
+  final limit = lines.length < 35 ? lines.length : 35;
+  for (int i = 0; i < limit; i++) {
+    final line = lines[i].trim().toLowerCase();
+    if (line.contains('ignore_for_file:') && line.contains('unused_code')) {
+      return true;
+    }
+    if (line.contains('@keepunusedfile') ||
+        line.contains('@keep-unused-file') ||
+        line == '// @keepunused' ||
+        line == '/// @keepunused') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Directives that indicate a class or element should be preserved and not marked as unused.
+const keepUnusedDirectives = [
+  '@keepunused',
+  '@keep-unused',
+  '// @keepunused',
+  '/// @keepunused',
+  '// @keep-unused',
+  '/// @keep-unused',
+  '// keep-unused',
+  '/// keep-unused',
+  '// ignore: unused_code',
+  '/// ignore: unused_code',
+];
+
+/// Checks if preceding lines before [classLineIndex] contain a keep-unused directive or annotation.
+bool hasKeepUnusedDirective(List<String> rawLines, int classLineIndex) {
+  int lookback = 0;
+  for (int i = classLineIndex - 1; i >= 0 && lookback < 6; i--) {
+    final line = rawLines[i].trim();
+    if (line.isEmpty) {
+      lookback++;
+      continue;
+    }
+    if (line.startsWith('class ') ||
+        line.startsWith('abstract ') ||
+        line.startsWith('enum ') ||
+        line.startsWith('mixin ') ||
+        line == '}') {
+      break;
+    }
+    final lower = line.toLowerCase();
+    for (final dir in keepUnusedDirectives) {
+      if (lower.contains(dir)) {
+        return true;
+      }
+    }
+    lookback++;
+  }
+  return false;
+}
+
+/// Annotations typically associated with Dependency Injection, Service Locators,
+/// or modular registration that construct or register instances indirectly.
+const diAnnotations = [
+  '@injectable',
+  '@singleton',
+  '@lazysingleton',
+  '@named',
+  '@module',
+  '@factorymethod',
+  '@riverpod',
+  '@entrypoint',
+  '@pragma',
+];
+
+/// Checks if preceding lines before [classLineIndex] contain a Dependency Injection annotation.
+bool hasDependencyInjectionAnnotation(
+    List<String> rawLines, int classLineIndex) {
+  int lookback = 0;
+  for (int i = classLineIndex - 1; i >= 0 && lookback < 6; i--) {
+    final line = rawLines[i].trim();
+    if (line.isEmpty) {
+      lookback++;
+      continue;
+    }
+    if (line.startsWith('class ') ||
+        line.startsWith('abstract ') ||
+        line.startsWith('enum ') ||
+        line.startsWith('mixin ') ||
+        line == '}') {
+      break;
+    }
+    final lower = line.toLowerCase();
+    for (final ann in diAnnotations) {
+      if (lower.startsWith(ann) ||
+          lower.contains('$ann(') ||
+          lower.contains('$ann ')) {
+        return true;
+      }
+    }
+    lookback++;
+  }
+  return false;
+}

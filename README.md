@@ -129,7 +129,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^2.3.0
+  detect_unused_code: ^2.4.0
 ```
 
 ---
@@ -286,6 +286,10 @@ detect_unused --version
 | `--no-todos` | - | `false` | Exclude TODO tasks from full audit |
 | `--no-diagnostics` | - | `false` | Exclude Dart analyzer diagnostics from full audit |
 | `--no-internal` | - | `false` | Exclude file-internal only public classes |
+| `--exclude-generated` | - | `true` | Exclude generated files (*.g.dart, *.freezed.dart, etc.) from audit & cleanup |
+| `--include-generated` | - | `false` | Force auditor to include generated files in scan targets |
+| `--no-di-guards` | - | `false` | Disable automatic protection for Dependency Injection classes |
+| `--exclude <patterns>` | - | - | Exclude custom file patterns or globs (e.g. `test/mocks/*`) |
 | `--threshold <int>` | - | `60` | Percentage threshold for heavily commented files |
 | `--min-lines <int>` | - | `15` | Minimum lines to flag a dead block |
 | `--json [filename]` | - | `false` | Save analysis report to a `.json` file (default: `detect_unused_code.json`) |
@@ -400,7 +404,12 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   detect_unused --assets
   ```
 
-### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.2+ و 2.3+):
+### 🛡️ ميزات الدقة العالية والحماية الذكية (v2.4.0+):
+- **استثناء الكود المولد تلقائياً (Generated Code Auto-Exclusion):** يتم استثناء كافة ملفات الكود المولد (`*.g.dart`، `*.freezed.dart`، `*.mocks.dart`، `*.config.dart`، إلخ) من تقارير الكود الميت ومن محرك التنظيف، مع الحفاظ على قراءة المراجع منها.
+- **توجيهات الاستثناء اليدوي (@keepUnused):** يمكنك كتابة `// @keepUnused` أو `@keepUnused` فوق أي كلاس لمنع اعتباره كوداً ميتاً، أو كتابة `// ignore_for_file: unused_code` في بداية الملف لتخطي الملف بالكامل.
+- **درع أنماط حقن الاعتماديات (DI Guards):** يتعرف المحلل تلقائياً على كلاسات الـ DI الموسومة بـ `@injectable`، `@singleton`، `@lazySingleton`، `@module`، ويحميها من الحذف الخاطئ.
+
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ إلى 2.4+):
 - **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
   ```bash
   detect_unused --clean-all

@@ -1,6 +1,6 @@
 name: detect_unused_code
 description: A fast, zero-dependency Dart and Flutter dead code, assets & dependencies remediation engine. Safely cleans unused classes, imports, packages, assets, and TODOs.
-version: 2.3.0
+version: 2.4.0
 homepage: https://github.com/mdalhagg/detect_unused_code
 repository: https://github.com/mdalhagg/detect_unused_code
 issue_tracker: https://github.com/mdalhagg/detect_unused_code/issues
