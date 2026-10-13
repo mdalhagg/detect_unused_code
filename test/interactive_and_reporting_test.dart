@@ -165,8 +165,8 @@ void main() {
 
       // Verify user attribution
       expect(markdown, contains('mdalhagg'));
-      expect(markdown,
-          contains('https://github.com/mdalhagg/detect_unused_code'));
+      expect(
+          markdown, contains('https://github.com/mdalhagg/detect_unused_code'));
     });
 
     test('Saves markdown report to file system', () {
