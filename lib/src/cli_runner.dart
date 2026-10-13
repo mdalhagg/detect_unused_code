@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'assets/asset_auditor.dart';
+import 'assets/asset_models.dart';
 import 'auditor.dart';
 import 'backup/backup_manager.dart';
 import 'backup/backup_manifest.dart';
+import 'cleaners/asset_cleaner.dart';
 import 'cleaners/code_cleaner.dart';
 import 'models.dart';
 import 'utils.dart';
@@ -99,8 +102,35 @@ class CliRunner {
       }
     }
 
-    // 4. Cleanup flags
+    // 4. Asset audit check
+    final auditAssets =
+        args.contains('--assets') || args.contains('--audit-assets');
+    if (auditAssets) {
+      bool isJson = false;
+      String jsonFileName = 'detect_unused_assets.json';
+      for (int i = 0; i < args.length; i++) {
+        final a = args[i];
+        if (a == '--json') {
+          isJson = true;
+          if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+            final next = args[i + 1].trim();
+            if (next.endsWith('.json')) jsonFileName = next;
+          }
+        } else if (a.startsWith('--json=')) {
+          isJson = true;
+          final val = a.substring('--json='.length).trim();
+          if (val.isNotEmpty) {
+            jsonFileName = val.endsWith('.json') ? val : '$val.json';
+          }
+        }
+      }
+      return _runAssetAudit(projectRoot,
+          isJson: isJson, jsonFileName: jsonFileName);
+    }
+
+    // 5. Cleanup flags
     final cleanAll = args.contains('--clean-all') || args.contains('--clean');
+    final cleanAssets = args.contains('--clean-assets');
     final cleanCommented = args.contains('--clean-commented-files') ||
         args.contains('--clean-commented');
     final cleanDeadBlocks = args.contains('--clean-dead-blocks');
@@ -113,6 +143,7 @@ class CliRunner {
     final cleanDeadCode = args.contains('--clean-dead-code');
 
     final isCleaning = cleanAll ||
+        cleanAssets ||
         cleanCommented ||
         cleanDeadBlocks ||
         cleanDeadClasses ||
@@ -125,6 +156,11 @@ class CliRunner {
     final isYes = args.contains('--yes') || args.contains('-y');
     final noBackup = args.contains('--no-backup');
     final verbose = args.contains('--verbose') || args.contains('-v');
+
+    if (cleanAssets && !cleanAll) {
+      return _runAssetCleanup(projectRoot,
+          dryRun: dryRun, isYes: isYes, noBackup: noBackup);
+    }
 
     int commentThreshold = 60;
     final thresholdIdx = args.indexOf('--threshold');
@@ -143,7 +179,6 @@ class CliRunner {
         minBlockLines = p;
       }
     }
-
 
     void updateProgress(int percent, String label) {
       final clamped = percent.clamp(0, 100);
@@ -386,6 +421,144 @@ class CliRunner {
       print('❌ Restore failed: ${result.message}');
       return 1;
     }
+  }
+
+  int _runAssetAudit(
+    Directory projectRoot, {
+    bool isJson = false,
+    String jsonFileName = 'detect_unused_assets.json',
+  }) {
+    print(
+        '================================================================================');
+    print('📦 DETECT_UNUSED_CODE: ASSETS & MEDIA AUDIT');
+    print(
+        '================================================================================');
+
+    final auditor = AssetAuditor(workspaceRoot: projectRoot);
+    final report = auditor.run(onProgress: (p, msg) {
+      stdout.write('\r⏳ Scanning Assets: [$p%] $msg   ');
+    });
+    stdout.writeln('\n');
+
+    print('📊 PACKAGES DISCOVERED (${report.scannedPackages.length}):');
+    for (final pkg in report.scannedPackages) {
+      final rel = getRelativePath(pkg.pubspecFile.path, projectRoot.path);
+      print('   • ${pkg.name} (at $rel)');
+    }
+    print('');
+
+    if (report.unusedAssets.isEmpty) {
+      print(
+          '✨ All ${report.totalScannedAssets} scanned assets are actively used in code!');
+      print(
+          '================================================================================');
+      return 0;
+    }
+
+    print(
+        '🚨 UNUSED ASSETS FOUND (${report.unusedAssets.length} of ${report.totalScannedAssets} files):');
+    print(
+        '--------------------------------------------------------------------------------');
+    for (final item in report.unusedAssets) {
+      final explicitTag =
+          item.isExplicitInPubspec ? ' [explicit in pubspec.yaml]' : '';
+      print(
+          '  ${item.category.label} ${item.path} (${item.sizeFormatted})$explicitTag');
+      print('             Owner: package ${item.ownerPackage.name}');
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+    print(
+        '💡 Total Reclaimable Disk Space: ${report.totalReclaimableFormatted}');
+    print(
+        '================================================================================');
+
+    if (isJson) {
+      final jsonFile = File('${projectRoot.path}/$jsonFileName');
+      jsonFile.writeAsStringSync(
+          const JsonEncoder.withIndent('  ').convert(report.toJson()));
+      print('📄 Report saved to ${jsonFile.path}');
+    } else {
+      print('💡 To clean these assets automatically, run:');
+      print('   detect_unused --clean-assets');
+    }
+
+    return 1;
+  }
+
+  int _runAssetCleanup(
+    Directory projectRoot, {
+    bool dryRun = false,
+    bool isYes = false,
+    bool noBackup = false,
+  }) {
+    print(
+        '================================================================================');
+    print('🧹 DETECT_UNUSED_CODE: ASSET & MEDIA CLEANUP');
+    print(
+        '================================================================================');
+
+    final auditor = AssetAuditor(workspaceRoot: projectRoot);
+    final report = auditor.run(onProgress: (p, msg) {
+      stdout.write('\r⏳ Scanning Assets: [$p%] $msg   ');
+    });
+    stdout.writeln('\n');
+
+    if (report.unusedAssets.isEmpty) {
+      print('✨ No unused assets found to clean.');
+      print(
+          '================================================================================');
+      return 0;
+    }
+
+    print(
+        '🚨 TARGET UNUSED ASSETS (${report.unusedAssets.length} files, ${report.totalReclaimableFormatted}):');
+    for (final item in report.unusedAssets) {
+      print('  ${item.category.label} ${item.path} (${item.sizeFormatted})');
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+
+    if (dryRun) {
+      print('🔍 [DRY-RUN]: Simulation complete. No asset files were deleted.');
+      print(
+          '   Running with --clean-assets would reclaim ${report.totalReclaimableFormatted}.');
+      return 0;
+    }
+
+    if (!isYes) {
+      stdout.write(
+          '⚠️ Are you sure you want to delete these ${report.unusedAssets.length} asset file(s)? [y/N]: ');
+      final input = stdin.readLineSync()?.trim().toLowerCase();
+      if (input != 'y' && input != 'yes') {
+        print('❌ Asset cleanup aborted by user. No files were modified.');
+        return 0;
+      }
+    }
+
+    final cleaner = AssetCleaner(
+      workspaceRoot: projectRoot,
+      backupManager: BackupManager(projectRoot),
+    );
+
+    final result =
+        cleaner.clean(unusedAssets: report.unusedAssets, dryRun: false);
+
+    print('\n🎉 ASSET CLEANUP COMPLETE:');
+    print('   - Deleted files: ${result.deletedFilesCount}');
+    print('   - Freed disk space: ${result.formattedBytesFreed}');
+    if (result.updatedPubspecsCount > 0) {
+      print('   - Updated pubspec.yaml files: ${result.updatedPubspecsCount}');
+    }
+    if (result.backupManifest != null) {
+      print(
+          '   - Snapshot backup created: #${result.backupManifest!.id} (${result.backupManifest!.backupDirName})');
+      print(
+          '     (You can restore at any time with: detect_unused --restore ${result.backupManifest!.id})');
+    }
+    print(
+        '================================================================================');
+    return 0;
   }
 
   int _executeCleanup({
@@ -881,7 +1054,8 @@ class CliRunner {
     print(
         '--------------------------------------------------------------------------------');
 
-    stdout.write('🔍 Verifying final project compilation and analyzer health...');
+    stdout
+        .write('🔍 Verifying final project compilation and analyzer health...');
     var health = cleaner.verifyProjectHealth();
 
     // Auto-resolve dangling imports/exports referencing deleted files
@@ -1259,8 +1433,9 @@ TARGET SPECIFICATION:
 AUTOMATED REMEDIATION & CLEANUP:
   --clean-all, --clean     Remediate all detected safe issues in one cohesive pass:
                            deletes 100% commented files, removes dead code blocks, removes
-                           dead classes, privatizes internal classes, strips TODOs, and
-                           removes unused imports with an automatic snapshot backup.
+                           dead classes, privatizes internal classes, strips TODOs,
+                           removes unused imports, and cleans unused assets with backups.
+  --clean-assets           Delete unused media assets and prune explicit pubspec.yaml lines.
   --clean-commented-files  Permanently delete fully commented-out files (>=90% comments).
   --clean-dead-blocks      Surgically remove large blocks of commented-out code in active files.
   --clean-dead-classes     Remove zero-usage dead classes, mixins, and widgets.
@@ -1283,6 +1458,9 @@ BACKUP & ROLLBACK:
   --clean-backups            Permanently delete all backup snapshots to free disk space.
 
 ANALYSIS FILTER FLAGS:
+  --assets,                Scan and report only unused assets, images, and fonts across
+  --audit-assets           all discovered pubspec.yaml packages in the workspace.
+
   --unused-classes,        Scan and report only unused/dead classes and widgets.
   --classes
 
@@ -1374,7 +1552,8 @@ class _CleanupStage {
       getFilesMarkedForDeletion;
 
   /// Executes the cleanup logic for this stage.
-  final CleanResult Function(AnalysisReport report, CodeCleaner cleaner) execute;
+  final CleanResult Function(AnalysisReport report, CodeCleaner cleaner)
+      execute;
 
   /// Creates a new [_CleanupStage].
   _CleanupStage({

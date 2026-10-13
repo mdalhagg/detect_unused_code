@@ -514,3 +514,12 @@ int countInternalUsages(String cleanCode, String className) {
   return wordRegex.allMatches(before).length +
       wordRegex.allMatches(after).length;
 }
+
+/// Safe collection extensions compatible with Dart >= 2.17.0.
+extension SafeIterableExtension<T> on Iterable<T> {
+  /// Returns the last element, or `null` if the iterable is empty.
+  T? get safeLast => isEmpty ? null : last;
+
+  /// Returns the first element, or `null` if the iterable is empty.
+  T? get safeFirst => isEmpty ? null : first;
+}

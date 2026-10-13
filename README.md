@@ -256,7 +256,9 @@ detect_unused --version
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--path=<dir>` / `--url=<dir>` | - | `.` | Target directory or file to audit |
-| `--clean-all` | `--clean` | `false` | Remediate all safe issues with phased auto-backup & prompt |
+| `--assets` | `--audit-assets` | `false` | Audit unused assets, images, and fonts across all packages |
+| `--clean-assets` | - | `false` | Safely delete unused media assets and prune explicit pubspec lines |
+| `--clean-all` | `--clean` | `false` | Remediate all safe issues (including assets) with auto-backup & prompt |
 | `--clean-commented-files` | - | `false` | Delete 100% commented-out files |
 | `--clean-dead-blocks` | - | `false` | Remove dead commented code blocks |
 | `--clean-dead-classes` | - | `false` | Remove zero-usage dead classes and widgets |
@@ -384,11 +386,19 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   # أو تحديد اسم مخصص للملف:
   detect_unused --json=report.json
   ```
+- **فحص وتدقيق الموارد والوسائط والخطوط المهملة (Assets & Fonts):**
+  ```bash
+  detect_unused --assets
+  ```
 
-### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.1+):
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.1+ و 2.2+):
 - **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
   ```bash
   detect_unused --clean-all
+  ```
+- **تنظيف الموارد والصور والخطوط المهملة واستعادة مساحة التخزين:**
+  ```bash
+  detect_unused --clean-assets
   ```
 - **معاينة خطة التنظيف فقط دون تعديل أي ملف في القرص (محاكاة):**
   ```bash

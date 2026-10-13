@@ -165,10 +165,9 @@ class BackupManager {
 
     final existingSet =
         manifest.files.map((e) => canonicalizePath(e.originalPath)).toSet();
-    final deletionSet = filesMarkedForDeletion
-            ?.map((p) => canonicalizePath(p))
-            .toSet() ??
-        const <String>{};
+    final deletionSet =
+        filesMarkedForDeletion?.map((p) => canonicalizePath(p)).toSet() ??
+            const <String>{};
 
     for (final file in additionalFiles) {
       if (!file.existsSync()) {
@@ -179,8 +178,8 @@ class BackupManager {
 
       if (existingSet.contains(canon)) {
         if (isDel) {
-          final idx = manifest.files.indexWhere(
-              (e) => canonicalizePath(e.originalPath) == canon);
+          final idx = manifest.files
+              .indexWhere((e) => canonicalizePath(e.originalPath) == canon);
           if (idx != -1 && !manifest.files[idx].isDeleted) {
             final old = manifest.files[idx];
             manifest.files[idx] = BackupFileEntry(

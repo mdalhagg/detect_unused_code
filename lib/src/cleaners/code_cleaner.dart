@@ -303,8 +303,6 @@ class CodeCleaner {
       }
     }
 
-
-
     return CleanResult(
       action: 'Clean Commented Files',
       success: true,
@@ -635,8 +633,8 @@ class CodeCleaner {
             RegExp(r'\b(?:final\s+)?Key\??\s+key\s*,\s*'), '');
         params = params.replaceAll(
             RegExp(r'\s*,\s*(?:final\s+)?Key\??\s+key\b'), '');
-        params = params.replaceAll(
-            RegExp(r'\b(?:final\s+)?Key\??\s+key\b'), '');
+        params =
+            params.replaceAll(RegExp(r'\b(?:final\s+)?Key\??\s+key\b'), '');
         hadKey = true;
       }
 
@@ -995,7 +993,8 @@ class CodeCleaner {
         // 2. Check if the directive spans multiple lines or is on a single line
         int startIdx = targetIdx;
         while (startIdx > 0 &&
-            !RegExp(r'^\s*(?:import|export|part)\b').hasMatch(lines[startIdx])) {
+            !RegExp(r'^\s*(?:import|export|part)\b')
+                .hasMatch(lines[startIdx])) {
           if (targetIdx - startIdx > 15) break;
           startIdx--;
         }
@@ -1019,7 +1018,8 @@ class CodeCleaner {
           );
 
           if (directivePattern.hasMatch(line)) {
-            removedText = directivePattern.firstMatch(line)?.group(0)?.trim() ?? targetUri;
+            removedText = directivePattern.firstMatch(line)?.group(0)?.trim() ??
+                targetUri;
             final remaining = line.replaceAll(directivePattern, '').trim();
             if (remaining.isEmpty) {
               lines.removeAt(startIdx);
