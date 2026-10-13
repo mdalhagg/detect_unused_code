@@ -242,7 +242,11 @@ class StagedCleanupRunner {
       print(
           '  ✂️ Dead Comment Blocks to Remove ($totalBlocks blocks in ${blocksToClean.length} files):');
       for (final f in blocksToClean) {
-        print('     - ${f.file} (${f.blocks.length} block(s))');
+        print('     - ${f.file} (${f.blocks.length} block(s)):');
+        for (final b in f.blocks) {
+          print(
+              '       ↳ Lines [L${b.startLine} - L${b.endLine}] (${b.totalLines} lines, ~${b.codeLines} lines code)');
+        }
       }
     }
     if (deadClassesToClean.isNotEmpty) {

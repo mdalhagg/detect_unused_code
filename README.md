@@ -47,12 +47,57 @@ Running `detect_unused_code` without any arguments automatically performs a comp
 
 ---
 
-## Example Audit Output
+## 🎛️ Interactive Terminal Control Dashboard (TUI)
 
-Here is what running the tool against a project looks like:
+Running **`detect_unused`** or **`detect_unused_code`** without any flags instantly opens the rich **Interactive Terminal Dashboard**. It first displays a live multi-stage audit progress bar, then opens the interactive control panel with category toggling, dry-run previews, staged safe cleanup, and instant rollback:
 
 ```text
 $ detect_unused
+
+⏳ Initializing workspace audit...
+⏳ [1/3 Code AST] [████████████████████████] 100% | Completed!
+⏳ [2/3 Packages] [████████████████████████] 100% | Scanning dependencies...
+⏳ [3/3 Assets]   [████████████████████████] 100% | Auditing media assets...
+
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔍 DETECT_UNUSED_CODE - INTERACTIVE CONTROL DASHBOARD (v3.2.0)         │
+│ ⚡ Powered by @mdalhagg | https://github.com/mdalhagg                  │
+├────────────────────────────────────────────────────────────────────────┤
+│ [1] [X] 💀 Dead Classes & Widgets (0 found)                            │
+│ [2] [X] 📦 Dead Commented Code Blocks (2 files)                        │
+│ [3] [X] 🚫 100% Commented Files (0 files)                              │
+│ [4] [X] 📦 Unused External Packages (0 packages)                       │
+│ [5] [X] 🖼️  Unused Media Assets & Fonts (0 files (0 B))               │
+│ [6] [ ] 📋 TODO Pending Tasks (12 notes)                               │
+│ [7] [X] 🧹 Unused & Redundant Imports (0 imports)                      │
+│ [8] [X] 💀 Dead Code & Null-Aware (0 items)                            │
+├────────────────────────────────────────────────────────────────────────┤
+│ Commands:                                                              │
+│  [1-8] Toggle category     [A] Toggle All        [V] View details      │
+│  [D] Preview (Dry Run)     [C] Clean Selected    [U] Undo last action  │
+│  [M] Export Markdown       [Q] Quit                                    │
+└────────────────────────────────────────────────────────────────────────┘
+Select an option:
+```
+
+### Dashboard Key Features & Controls
+- **Live Visual Progress Bars**: Real-time feedback across `Code AST`, `Packages`, and `Media Assets` so you can monitor progress on large projects (1,000+ files).
+- **`[1-8]` Toggle Category**: Enable or disable specific cleanup targets interactively before executing cleanup.
+- **`[V]` View Details**: Inspect detected items with exact file paths and dead block line ranges (`↳ Lines [L771 - L1260] (490 lines, ~91 lines code)`).
+- **`[D]` Preview (Dry Run)**: Safely simulate cleanup without modifying any files on disk.
+- **`[C]` Clean Selected**: Executes defensive multi-stage cleanup, followed by an automatic verification re-audit to verify code health before returning to the dashboard.
+- **`[U]` Undo Last Action**: Instant rollback to restore files from the previous snapshot backup.
+- **`[M]` Export Markdown**: Generates a CI/CD-ready GitHub Flavored Markdown (GFM) summary report.
+- **`[Q]` Quit**: Exit the dashboard cleanly.
+
+---
+
+## 🔎 Detailed Non-Interactive Audit Report (`--scan` / CI/CD)
+
+When running in headless environments, CI/CD, or with `--scan`, the auditor outputs a comprehensive terminal report:
+
+```text
+$ detect_unused --scan
 
 ⏳ Loading & Analyzing: [████████████████████████████] 100% | Completed!
 
@@ -129,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^2.4.0
+  detect_unused_code: ^3.2.0
 ```
 
 ---
@@ -197,30 +242,9 @@ detect_unused -v
 
 ---
 
-## 🎛️ Interactive Terminal Dashboard & Instant Rollback (v3.0.0)
+## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0)
 
-Version `3.0.0` introduces a powerful **Interactive Terminal UI (TUI)** and **Instant Undo**:
-
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ 🔍 DETECT_UNUSED_CODE - INTERACTIVE CONTROL DASHBOARD (v3.0.0)         │
-│ ⚡ Powered by @mdalhagg | https://github.com/mdalhagg                  │
-├────────────────────────────────────────────────────────────────────────┤
-│ [1] [X] 💀 Dead Classes & Widgets       (3 found)                      │
-│ [2] [X] 📦 Dead Commented Code Blocks   (2 files)                      │
-│ [3] [ ] 🚫 100% Commented Files         (1 file)                       │
-│ [4] [X] 🔒 Privatize Internal Classes   (1 class)                      │
-│ [5] [ ] 📋 TODO Pending Tasks           (5 notes)                      │
-│ [6] [X] 🧹 Unused & Redundant Imports   (8 imports)                    │
-│ [7] [X] 🖼️ Unused Media Assets & Fonts   (4 files, 1.2 MB reclaimable)  │
-│ [8] [X] 📦 Unused External Packages     (2 packages)                   │
-├────────────────────────────────────────────────────────────────────────┤
-│ Commands:                                                              │
-│  [1-8] Toggle category    [A] Toggle All         [V] View item details │
-│  [D] Preview (Dry Run)    [C] Clean Selected     [U] Undo last action  │
-│  [M] Export Markdown      [Q] Quit                                     │
-└────────────────────────────────────────────────────────────────────────┘
-```
+While running `detect_unused` launches the interactive dashboard automatically, you can also control or automate it directly via CLI flags:
 
 ```bash
 # Launch the Interactive Terminal UI (TUI) Dashboard (Default behavior):
@@ -466,7 +490,7 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
 - **توجيهات الاستثناء اليدوي (@keepUnused):** يمكنك كتابة `// @keepUnused` أو `@keepUnused` فوق أي كلاس لمنع اعتباره كوداً ميتاً، أو كتابة `// ignore_for_file: unused_code` في بداية الملف لتخطي الملف بالكامل.
 - **درع أنماط حقن الاعتماديات (DI Guards):** يتعرف المحلل تلقائياً على كلاسات الـ DI الموسومة بـ `@injectable`، `@singleton`، `@lazySingleton`، `@module`، ويحميها من الحذف الخاطئ.
 
-### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ إلى 2.4+):
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ إلى 3.2+):
 - **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
   ```bash
   detect_unused --clean-all
@@ -512,7 +536,10 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   # تنظيف وحذف التبعيات والمكاتب المهملة والمكررة من ملفات pubspec.yaml:
   detect_unused --clean-packages
   ```
-- **لوحة التحكم التفاعلية والاسترجاع الفوري (v3.0.0):**
+- **لوحة التحكم التفاعلية والاسترجاع الفوري (v3.2.0):**
+  - **أشرطة تقدم حية (Live Progress Bars):** متابعة فورية لمراحل فحص الكود، البكجات، والأسيتس في المشاريع الضخمة.
+  - **تحديد مواقع أسطر الكود الميت بدقة:** إظهار نطاق الأسطر الفعلي للبلوكات المعلقة في تقرير التفاصيل والمعاينة (`↳ Lines [L152 - L178]`).
+  - **فحص وتأكيد تلقائي بعد التنظيف:** إعادة فحص تلقائية بعد الحذف لعرض تقرير التأكيد قبل العودة للوحة التحكم.
   ```bash
   # تشغيل لوحة التحكم التفاعلية (TUI Dashboard) تلقائياً بمجرد كتابة الأمر:
   detect_unused
