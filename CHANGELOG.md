@@ -1,3 +1,14 @@
+## 3.2.0
+
+- **Real-Time Live Progress Bar for TUI Initialization & Re-Audits:**
+  - Added live progress bars (`[██████░░░░] % | ...`) for all three audit engines (1/3 Code AST, 2/3 Packages, 3/3 Assets) when initializing the interactive dashboard and during re-audits, preventing UI freezes on large projects.
+- **Detailed Dead Code Blocks Reporting:**
+  - `[V]` View details and planned remediation reports now display exact line ranges and line counts for each dead code block (e.g. `↳ Lines [L152 - L178] (27 lines, ~6 lines code)`).
+- **Post-Cleanup Instant Verification Screen:**
+  - After executing `[C] Clean Selected`, the engine automatically re-audits the workspace and renders a comprehensive post-cleanup verification summary showing remaining counts before returning to the dashboard.
+- **Dashboard UI & Alignment Polish:**
+  - Fixed spacing for category `[5]` (`🖼️  Unused Media Assets & Fonts`) to prevent emoji visual overlap in Windows Terminal and PowerShell.
+
 ## 3.1.0
 
 - **Interactive TUI Dashboard by Default:**

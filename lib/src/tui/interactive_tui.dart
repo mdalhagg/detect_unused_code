@@ -39,19 +39,48 @@ class InteractiveTui {
     8: true, // Dead Code & Null-Aware
   };
 
-  /// Starts the interactive session loop.
-  void start() {
-    print('\n⏳ Initializing workspace audit...');
+  void _renderProgress(int percent, String stageLabel, String detail) {
+    final clamped = percent.clamp(0, 100);
+    const barWidth = 24;
+    final filled = ((clamped / 100) * barWidth).round();
+    final empty = barWidth - filled;
+    final bar = '${'█' * filled}${'░' * (empty > 0 ? empty : 0)}';
+    final text =
+        '\r⏳ [$stageLabel] [$bar] ${clamped.toString().padLeft(3)}% | $detail     ';
+    stdout.write(text);
+  }
+
+  _AuditBundle _runFullAudit({String label = 'Initializing'}) {
+    stdout.writeln('\n⏳ $label workspace audit...');
 
     final auditor =
         UnusedCodeAuditor(projectRoot: projectRoot, options: options);
-    var report = auditor.run();
+    final report = auditor.run(onProgress: (percent, msg) {
+      _renderProgress(percent, '1/3 Code AST', msg);
+    });
+    stdout.writeln();
 
     final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
-    var depReport = depAuditor.run();
+    final depReport = depAuditor.run(onProgress: (percent, msg) {
+      _renderProgress(percent, '2/3 Packages', msg);
+    });
+    stdout.writeln();
 
     final assetAuditor = AssetAuditor(workspaceRoot: projectRoot);
-    var assetReport = assetAuditor.run();
+    final assetReport = assetAuditor.run(onProgress: (percent, msg) {
+      _renderProgress(percent, '3/3 Assets', msg);
+    });
+    stdout.writeln('\n');
+
+    return _AuditBundle(report, depReport, assetReport);
+  }
+
+  /// Starts the interactive session loop.
+  void start() {
+    var bundle = _runFullAudit(label: 'Initializing');
+    var report = bundle.report;
+    var depReport = bundle.depReport;
+    var assetReport = bundle.assetReport;
 
     bool running = true;
     while (running) {
@@ -101,21 +130,65 @@ class InteractiveTui {
             assetReport: assetReport,
             dryRun: false,
           );
-          print('\n⏳ Refreshing workspace audit...');
-          report = auditor.run();
-          depReport = depAuditor.run();
-          assetReport = assetAuditor.run();
-          print('Press [Enter] to return to dashboard...');
+          bundle = _runFullAudit(label: 'Re-auditing after cleanup');
+          report = bundle.report;
+          depReport = bundle.depReport;
+          assetReport = bundle.assetReport;
+
+          stdout.writeln(
+              '================================================================');
+          stdout.writeln('📊 POST-CLEANUP VERIFICATION RESULT:');
+          stdout.writeln(
+              '   💀 Dead Classes & Widgets:    ${report.deadClasses.length} remaining');
+          stdout.writeln(
+              '   📦 Dead Comment Code Blocks:  ${report.filesWithCommentBlocks.length} files');
+          stdout.writeln(
+              '   🚫 100% Commented Files:       ${report.fullyCommentedFiles.length} files');
+          stdout.writeln(
+              '   📦 Unused Packages:            ${depReport.issues.length} declarations');
+          stdout.writeln(
+              '   🖼️  Unused Media Assets:        ${assetReport.unusedAssets.length} files (${assetReport.totalReclaimableFormatted})');
+          stdout.writeln(
+              '   📋 TODO Pending Tasks:         ${report.todos.length} notes');
+          stdout.writeln(
+              '   🧹 Unused & Redundant Imports: ${report.unusedImports.length} imports');
+          stdout.writeln(
+              '   💀 Dead Code & Null-Aware:     ${report.deadCodeAndExpressions.length} items');
+          stdout.writeln(
+              '================================================================');
+          stdout.write('\nPress [Enter] to return to dashboard...');
           stdin.readLineSync();
           break;
 
         case 'U':
           _executeUndo();
-          print('\n⏳ Refreshing workspace audit...');
-          report = auditor.run();
-          depReport = depAuditor.run();
-          assetReport = assetAuditor.run();
-          print('Press [Enter] to return to dashboard...');
+          bundle = _runFullAudit(label: 'Re-auditing after undo');
+          report = bundle.report;
+          depReport = bundle.depReport;
+          assetReport = bundle.assetReport;
+
+          stdout.writeln(
+              '================================================================');
+          stdout.writeln('📊 POST-UNDO RESTORE RESULT:');
+          stdout.writeln(
+              '   💀 Dead Classes & Widgets:    ${report.deadClasses.length} found');
+          stdout.writeln(
+              '   📦 Dead Comment Code Blocks:  ${report.filesWithCommentBlocks.length} files');
+          stdout.writeln(
+              '   🚫 100% Commented Files:       ${report.fullyCommentedFiles.length} files');
+          stdout.writeln(
+              '   📦 Unused Packages:            ${depReport.issues.length} declarations');
+          stdout.writeln(
+              '   🖼️  Unused Media Assets:        ${assetReport.unusedAssets.length} files (${assetReport.totalReclaimableFormatted})');
+          stdout.writeln(
+              '   📋 TODO Pending Tasks:         ${report.todos.length} notes');
+          stdout.writeln(
+              '   🧹 Unused & Redundant Imports: ${report.unusedImports.length} imports');
+          stdout.writeln(
+              '   💀 Dead Code & Null-Aware:     ${report.deadCodeAndExpressions.length} items');
+          stdout.writeln(
+              '================================================================');
+          stdout.write('\nPress [Enter] to return to dashboard...');
           stdin.readLineSync();
           break;
 
@@ -163,7 +236,7 @@ class InteractiveTui {
         '${report.fullyCommentedFiles.length} files');
     _printCategoryLine(4, '📦 Unused External Packages',
         '${depReport.issues.length} packages');
-    _printCategoryLine(5, '🖼️ Unused Media Assets & Fonts',
+    _printCategoryLine(5, '🖼️  Unused Media Assets & Fonts',
         '${assetReport.unusedAssets.length} files (${assetReport.totalReclaimableFormatted})');
     _printCategoryLine(
         6, '📋 TODO Pending Tasks', '${report.todos.length} notes');
@@ -247,7 +320,11 @@ class InteractiveTui {
       stdout.writeln(
           '\n📦 [Active Files with Dead Blocks] (${report.filesWithCommentBlocks.length}):');
       for (final f in report.filesWithCommentBlocks) {
-        stdout.writeln('   - ${f.file} (${f.blocks.length} block(s))');
+        stdout.writeln('   - ${f.file} (${f.blocks.length} block(s)):');
+        for (final b in f.blocks) {
+          stdout.writeln(
+              '     ↳ Lines [L${b.startLine} - L${b.endLine}] (${b.totalLines} lines, ~${b.codeLines} lines code)');
+        }
       }
     }
 
@@ -316,4 +393,12 @@ class InteractiveTui {
       print('❌ Undo failed: ${res.message}');
     }
   }
+}
+
+class _AuditBundle {
+  final AnalysisReport report;
+  final PackageDependenciesReport depReport;
+  final AssetAnalysisReport assetReport;
+
+  _AuditBundle(this.report, this.depReport, this.assetReport);
 }
