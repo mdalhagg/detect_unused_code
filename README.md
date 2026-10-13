@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/mdalhagg/detect_unused_code?style=flat&color=1877F2)](https://github.com/mdalhagg/detect_unused_code/stargazers)
 
-A fast, zero-dependency Dart and Flutter dead code detector and automated remediation engine. Safely detects and cleans dead classes, unused widgets, commented-out files, dead code blocks, unused imports, unused variables, and pending TODO tasks across Dart and Flutter projects.
+A fast, zero-dependency Dart and Flutter dead code detector and automated remediation engine. Safely detects and cleans dead classes, unused widgets, commented-out files, dead code blocks, unused imports, unused variables, pending TODO tasks, unreferenced media assets, and unused/duplicate external packages across Dart and Flutter projects and monorepos.
 
 Works with zero external dependencies, runs on any Dart SDK from `2.17.0` up to Dart `3.x` / `4.x`, and supports both CLI usage and programmatic Dart API.
 
@@ -129,7 +129,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^2.1.2
+  detect_unused_code: ^2.3.0
 ```
 
 ---
@@ -197,9 +197,9 @@ detect_unused -v
 
 ---
 
-## 🧹 Automated Cleanup & Remediation Engine (v2.0+)
+## 🧹 Automated Cleanup & Remediation Engine (v2.0+ / v2.2+ / v2.3+)
 
-Versions `2.0+` and `2.1+` introduce a defensive code remediation engine. It automatically resolves detected issues across a phased 7-stage pipeline while maintaining snapshot backups and verified compilation health:
+Versions `2.0+`, `2.2+`, and `2.3+` introduce a defensive code remediation engine. It automatically resolves detected issues across a phased 9-stage pipeline while maintaining snapshot backups and verified compilation health:
 
 ```bash
 # 1. Remediate ALL detected safe issues with automatic snapshot backup & confirmation
@@ -216,6 +216,8 @@ detect_unused --privatize-internal       # Converts file-internal public classes
 detect_unused --clean-todos              # Strips and cleans pending // TODO lines
 detect_unused --clean-unused-imports     # Removes unused and unnecessary imports
 detect_unused --clean-dead-code          # Replaces dead null-aware ?. with . and cleans dead code
+detect_unused --clean-assets             # Deletes unused media assets and unregisters from pubspec.yaml
+detect_unused --clean-packages           # Removes unused and duplicate external dependencies from pubspec.yaml
 
 # 4. Skip confirmation prompt for CI/CD or automated scripts
 detect_unused --clean-all -y
@@ -240,14 +242,15 @@ detect_unused --version
 ```
 
 ### 🛡️ Defensive Safety Architecture
-1. **Multi-Stage Phased Pipeline**: `--clean-all` runs in 7 discrete stages (Commented Files → Dead Classes → Dead Blocks → Internal Classes Privatization → TODOs → Unused Imports → Dead Code), re-auditing AST and line offsets between stages to maintain surgical precision.
-2. **Automatic Snapshot Backups**: Before any files are touched, an isolated copy is saved to `.detect_unused/backups/`.
-3. **Instant Rollback**: If you ever want to revert, run `detect_unused --restore <id>` or `detect_unused --restore-latest` to instantly recover files.
-4. **Auto-Clean Snapshot on Restore**: The restored snapshot folder is automatically removed upon successful recovery to reclaim disk space (override with `--keep-backup`).
-5. **Smart Dart Extension Awareness**: Scans declared getters, setters, methods, and static fields in extensions to prevent false-positive flags when extension members are used across files.
-6. **Constructor Key Cleanup**: Strips redundant `super.key` and `Key? key` parameters when privatizing internal widget classes to prevent `unused_element_parameter` compiler warnings.
-7. **Automatic `.gitignore` Protection**: `.detect_unused/` is automatically appended to your `.gitignore`.
-8. **Post-Cleanup Health Verification**: The tool automatically verifies `dart analyze` after cleaning. If compiler errors are detected, it prompts to auto-rollback immediately.
+1. **Multi-Stage Phased Pipeline**: `--clean-all` runs in 9 discrete stages (Commented Files → Dead Classes → Dead Blocks → Internal Classes Privatization → TODOs → Unused Imports → Dead Code → Unused Assets → Unused/Duplicate Packages), re-auditing AST and line offsets between stages to maintain surgical precision.
+2. **Multi-Pubspec & Monorepo Scoping**: Automatically identifies all `pubspec.yaml` files across root, submodules, and nested packages, scoping imports and assets strictly to each package without leaking dependencies.
+3. **Automatic Snapshot Backups**: Before any files or `pubspec.yaml` declarations are touched, an isolated copy is saved to `.detect_unused/backups/`.
+4. **Instant Rollback**: If you ever want to revert, run `detect_unused --restore <id>` or `detect_unused --restore-latest` to instantly recover files.
+5. **Auto-Clean Snapshot on Restore**: The restored snapshot folder is automatically removed upon successful recovery to reclaim disk space (override with `--keep-backup`).
+6. **Smart Dart Extension Awareness**: Scans declared getters, setters, methods, and static fields in extensions to prevent false-positive flags when extension members are used across files.
+7. **Constructor Key Cleanup**: Strips redundant `super.key` and `Key? key` parameters when privatizing internal widget classes to prevent `unused_element_parameter` compiler warnings.
+8. **Automatic `.gitignore` Protection**: `.detect_unused/` is automatically appended to your `.gitignore`.
+9. **Post-Cleanup Health Verification**: The tool automatically verifies `dart analyze` after cleaning. If compiler errors are detected, it prompts to auto-rollback immediately.
 
 ---
 
@@ -256,9 +259,11 @@ detect_unused --version
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--path=<dir>` / `--url=<dir>` | - | `.` | Target directory or file to audit |
+| `--packages` | `--audit-packages` | `false` | Audit unused & duplicate packages across all pubspec.yaml files |
+| `--clean-packages` | - | `false` | Safely delete unused & duplicate dependencies from pubspec.yaml |
 | `--assets` | `--audit-assets` | `false` | Audit unused assets, images, and fonts across all packages |
 | `--clean-assets` | - | `false` | Safely delete unused media assets and prune explicit pubspec lines |
-| `--clean-all` | `--clean` | `false` | Remediate all safe issues (including assets) with auto-backup & prompt |
+| `--clean-all` | `--clean` | `false` | Remediate all safe issues (including assets & packages) with auto-backup & prompt |
 | `--clean-commented-files` | - | `false` | Delete 100% commented-out files |
 | `--clean-dead-blocks` | - | `false` | Remove dead commented code blocks |
 | `--clean-dead-classes` | - | `false` | Remove zero-usage dead classes and widgets |
@@ -386,15 +391,23 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   # أو تحديد اسم مخصص للملف:
   detect_unused --json=report.json
   ```
+- **فحص وتدقيق المكاتب والتبعيات الخارجية المهملة والمكررة في ملفات pubspec.yaml:**
+  ```bash
+  detect_unused --packages
+  ```
 - **فحص وتدقيق الموارد والوسائط والخطوط المهملة (Assets & Fonts):**
   ```bash
   detect_unused --assets
   ```
 
-### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.1+ و 2.2+):
+### 🧹 أوامر التنظيف التلقائي والنسخ الاحتياطي (إصدارات 2.0+ و 2.2+ و 2.3+):
 - **تنظيف آمن وشامل لجميع المشاكل المكتشفة مع إنشاء نسخة احتياطية تلقائية:**
   ```bash
   detect_unused --clean-all
+  ```
+- **تنظيف التبعيات والمكاتب المهملة والمكررة من ملفات pubspec.yaml:**
+  ```bash
+  detect_unused --clean-packages
   ```
 - **تنظيف الموارد والصور والخطوط المهملة واستعادة مساحة التخزين:**
   ```bash
@@ -426,6 +439,12 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
 
   # تنظيف الأكواد الميتة والتعبيرات غير المجدية (مثل ?. الزائدة):
   detect_unused --clean-dead-code
+
+  # تنظيف وحذف الموارد والصور المهملة من ملفات pubspec.yaml والقرص:
+  detect_unused --clean-assets
+
+  # تنظيف وحذف التبعيات والمكاتب المهملة والمكررة من ملفات pubspec.yaml:
+  detect_unused --clean-packages
   ```
 - **إدارة النسخ الاحتياطية والاسترجاع الفوري:**
   ```bash

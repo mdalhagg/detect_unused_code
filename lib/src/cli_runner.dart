@@ -8,7 +8,9 @@ import 'backup/backup_manager.dart';
 import 'backup/backup_manifest.dart';
 import 'cleaners/asset_cleaner.dart';
 import 'cleaners/code_cleaner.dart';
+import 'cleaners/dep_cleaner.dart';
 import 'models.dart';
+import 'packages/dep_auditor.dart';
 import 'utils.dart';
 import 'version.dart';
 
@@ -128,9 +130,36 @@ class CliRunner {
           isJson: isJson, jsonFileName: jsonFileName);
     }
 
-    // 5. Cleanup flags
+    // 5. External dependencies audit check
+    final auditPackages =
+        args.contains('--packages') || args.contains('--audit-packages');
+    if (auditPackages) {
+      bool isJson = false;
+      String jsonFileName = 'detect_unused_packages.json';
+      for (int i = 0; i < args.length; i++) {
+        final a = args[i];
+        if (a == '--json') {
+          isJson = true;
+          if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+            final next = args[i + 1].trim();
+            if (next.endsWith('.json')) jsonFileName = next;
+          }
+        } else if (a.startsWith('--json=')) {
+          isJson = true;
+          final val = a.substring('--json='.length).trim();
+          if (val.isNotEmpty) {
+            jsonFileName = val.endsWith('.json') ? val : '$val.json';
+          }
+        }
+      }
+      return _runPackagesAudit(projectRoot,
+          isJson: isJson, jsonFileName: jsonFileName);
+    }
+
+    // 6. Cleanup flags
     final cleanAll = args.contains('--clean-all') || args.contains('--clean');
     final cleanAssets = args.contains('--clean-assets');
+    final cleanPackages = args.contains('--clean-packages');
     final cleanCommented = args.contains('--clean-commented-files') ||
         args.contains('--clean-commented');
     final cleanDeadBlocks = args.contains('--clean-dead-blocks');
@@ -144,6 +173,7 @@ class CliRunner {
 
     final isCleaning = cleanAll ||
         cleanAssets ||
+        cleanPackages ||
         cleanCommented ||
         cleanDeadBlocks ||
         cleanDeadClasses ||
@@ -159,6 +189,11 @@ class CliRunner {
 
     if (cleanAssets && !cleanAll) {
       return _runAssetCleanup(projectRoot,
+          dryRun: dryRun, isYes: isYes, noBackup: noBackup);
+    }
+
+    if (cleanPackages && !cleanAll) {
+      return _runPackagesCleanup(projectRoot,
           dryRun: dryRun, isYes: isYes, noBackup: noBackup);
     }
 
@@ -556,6 +591,139 @@ class CliRunner {
       print(
           '     (You can restore at any time with: detect_unused --restore ${result.backupManifest!.id})');
     }
+    print(
+        '================================================================================');
+    return 0;
+  }
+
+  int _runPackagesAudit(
+    Directory projectRoot, {
+    bool isJson = false,
+    String jsonFileName = 'detect_unused_packages.json',
+  }) {
+    print(
+        '================================================================================');
+    print('📦 DETECT_UNUSED_CODE: EXTERNAL DEPENDENCIES AUDIT');
+    print(
+        '================================================================================');
+
+    final auditor = DependencyAuditor(workspaceRoot: projectRoot);
+    final report = auditor.run(onProgress: (p, msg) {
+      stdout.write('\r⏳ Auditing Dependencies: [$p%] $msg   ');
+    });
+    stdout.writeln('\n');
+
+    print('📊 PUBSPEC FILES SCANNED: ${report.scannedPubspecsCount}');
+    print(
+        '📦 TOTAL DEPENDENCIES INSPECTED: ${report.totalDependenciesScanned}');
+    print('');
+
+    if (report.issues.isEmpty) {
+      print(
+          '✨ All declared dependencies are actively imported and verified across all pubspec files!');
+      print(
+          '================================================================================');
+      return 0;
+    }
+
+    print(
+        '🚨 DEPENDENCY ISSUES FOUND (${report.issues.length} issue(s) across ${report.pubspecsWithIssuesCount} file(s)):');
+    print(
+        '--------------------------------------------------------------------------------');
+    for (final item in report.issues) {
+      print(
+          '  ${item.tag} ${item.packageName} -> ${item.pubspecRelativePath}:${item.startLine}');
+      print('             ${item.description}');
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+    print(
+        '💡 Breakdown: ${report.unusedDependencies.length} unused, ${report.duplicateDependencies.length} duplicate(s).');
+    print(
+        '================================================================================');
+
+    if (isJson) {
+      final jsonFile = File('${projectRoot.path}/$jsonFileName');
+      jsonFile.writeAsStringSync(
+          const JsonEncoder.withIndent('  ').convert(report.toJson()));
+      print('📄 Report saved to ${jsonFile.path}');
+    } else {
+      print('💡 To clean these unused and duplicate dependencies, run:');
+      print('   detect_unused --clean-packages');
+    }
+
+    return 1;
+  }
+
+  int _runPackagesCleanup(
+    Directory projectRoot, {
+    bool dryRun = false,
+    bool isYes = false,
+    bool noBackup = false,
+  }) {
+    print(
+        '================================================================================');
+    print('🧹 DETECT_UNUSED_CODE: DEPENDENCIES CLEANUP');
+    print(
+        '================================================================================');
+
+    final auditor = DependencyAuditor(workspaceRoot: projectRoot);
+    final report = auditor.run(onProgress: (p, msg) {
+      stdout.write('\r⏳ Auditing Dependencies: [$p%] $msg   ');
+    });
+    stdout.writeln('\n');
+
+    if (report.issues.isEmpty) {
+      print('✨ No unused or duplicate dependencies found to clean.');
+      print(
+          '================================================================================');
+      return 0;
+    }
+
+    print(
+        '🚨 TARGET DEPENDENCY ISSUES (${report.issues.length} declaration(s) to remove):');
+    for (final item in report.issues) {
+      print(
+          '  ${item.tag} ${item.packageName} in ${item.pubspecRelativePath}:${item.startLine}');
+    }
+    print(
+        '--------------------------------------------------------------------------------');
+
+    if (dryRun) {
+      print(
+          '🔍 [DRY-RUN]: Simulation complete. No pubspec.yaml files were modified.');
+      print(
+          '   Running with --clean-packages would update ${report.pubspecsWithIssuesCount} pubspec file(s).');
+      return 0;
+    }
+
+    if (!isYes) {
+      stdout.write(
+          '⚠️ Are you sure you want to remove these ${report.issues.length} dependency declaration(s)? [y/N]: ');
+      final input = stdin.readLineSync()?.trim().toLowerCase();
+      if (input != 'y' && input != 'yes') {
+        print('❌ Cleanup aborted by user. No files were modified.');
+        return 0;
+      }
+    }
+
+    final cleaner = DependencyCleaner(
+      workspaceRoot: projectRoot,
+      backupManager: BackupManager(projectRoot),
+    );
+
+    final result = cleaner.clean(issues: report.issues, dryRun: false);
+
+    print('\n🎉 DEPENDENCY CLEANUP COMPLETE:');
+    print('   - Removed declarations: ${result.removedCount}');
+    print('   - Updated pubspec.yaml files: ${result.updatedPubspecsCount}');
+    if (result.backupManifest != null) {
+      print(
+          '   - Snapshot backup created: #${result.backupManifest!.id} (${result.backupManifest!.backupDirName})');
+      print(
+          '     (You can restore at any time with: detect_unused --restore ${result.backupManifest!.id})');
+    }
+    print('💡 Hint: Run `dart pub get` to update your pubspec.lock.');
     print(
         '================================================================================');
     return 0;
@@ -1434,8 +1602,9 @@ AUTOMATED REMEDIATION & CLEANUP:
   --clean-all, --clean     Remediate all detected safe issues in one cohesive pass:
                            deletes 100% commented files, removes dead code blocks, removes
                            dead classes, privatizes internal classes, strips TODOs,
-                           removes unused imports, and cleans unused assets with backups.
+                           removes unused imports, cleans unused assets and unused packages.
   --clean-assets           Delete unused media assets and prune explicit pubspec.yaml lines.
+  --clean-packages         Delete unused and duplicate dependencies from pubspec.yaml files.
   --clean-commented-files  Permanently delete fully commented-out files (>=90% comments).
   --clean-dead-blocks      Surgically remove large blocks of commented-out code in active files.
   --clean-dead-classes     Remove zero-usage dead classes, mixins, and widgets.
@@ -1458,6 +1627,9 @@ BACKUP & ROLLBACK:
   --clean-backups            Permanently delete all backup snapshots to free disk space.
 
 ANALYSIS FILTER FLAGS:
+  --packages,              Scan and report unused and duplicate external dependencies across
+  --audit-packages         all discovered pubspec.yaml files in the workspace.
+
   --assets,                Scan and report only unused assets, images, and fonts across
   --audit-assets           all discovered pubspec.yaml packages in the workspace.
 

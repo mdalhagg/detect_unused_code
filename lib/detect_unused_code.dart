@@ -38,4 +38,15 @@ export 'src/assets/asset_models.dart'
 export 'src/assets/pubspec_scanner.dart' show PubspecScanner;
 export 'src/assets/asset_auditor.dart' show AssetAuditor, AssetProgressCallback;
 export 'src/cleaners/asset_cleaner.dart' show AssetCleaner, CleanAssetsResult;
+export 'src/packages/package_dep_models.dart'
+    show
+        DependencyScope,
+        DependencyIssueType,
+        DeclaredDependency,
+        UnusedDependencyItem,
+        PackageDependenciesReport;
+export 'src/packages/dep_auditor.dart'
+    show DependencyAuditor, DepProgressCallback;
+export 'src/cleaners/dep_cleaner.dart'
+    show DependencyCleaner, CleanDependenciesResult;
 export 'src/version.dart' show packageVersion;
