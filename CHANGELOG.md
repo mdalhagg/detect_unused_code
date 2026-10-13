@@ -1,6 +1,15 @@
+## 3.0.1
+
+- **Interactive TUI Dashboard by Default:**
+  - Launching `detect_unused` or `detect_unused_code` without command-line arguments now automatically opens the Interactive Terminal UI (TUI) Dashboard.
+  - Added `--scan` and `--report` flags for running the standard non-interactive terminal audit report.
+- **pubspec.yaml Description Optimization:**
+  - Optimized package description length to comply strictly with pub.dev guidelines (60 to 180 characters), securing a full 160/160 pub points score.
+
 ## 3.0.0
 
 - **Interactive Terminal UI (TUI) Dashboard (`--interactive` / `-i`):**
+  - Automatically launches by default when executing `detect_unused` or `detect_unused_code` without command-line flags (use `--scan` or `--report` for non-interactive output).
   - Rich interactive terminal control panel wizard featuring zero external dependencies.
   - Interactive selection and toggles for 8 cleanable categories:
     - Dead Classes & Widgets

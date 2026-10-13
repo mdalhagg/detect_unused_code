@@ -223,10 +223,15 @@ Version `3.0.0` introduces a powerful **Interactive Terminal UI (TUI)** and **In
 ```
 
 ```bash
-# Launch the Interactive Terminal UI (TUI) Dashboard
+# Launch the Interactive Terminal UI (TUI) Dashboard (Default behavior):
+detect_unused
+# or using the full executable name:
+detect_unused_code
+# or with explicit flag:
 detect_unused --interactive
-# or short alias:
-detect_unused -i
+
+# Run standard non-interactive terminal audit instead of dashboard:
+detect_unused --scan
 
 # Instant single-step rollback of the latest cleanup snapshot:
 detect_unused --undo
@@ -504,10 +509,15 @@ The CLI returns exit code `1` when dead classes, fully commented files, or unuse
   ```
 - **لوحة التحكم التفاعلية والاسترجاع الفوري (v3.0.0):**
   ```bash
-  # تشغيل لوحة التحكم التفاعلية (TUI Dashboard) واختيار ما ترغب بحذفه:
+  # تشغيل لوحة التحكم التفاعلية (TUI Dashboard) تلقائياً بمجرد كتابة الأمر:
+  detect_unused
+  # أو باستخدام الاسم الكامل:
+  detect_unused_code
+  # أو باستخدام الراية الصريحة:
   detect_unused --interactive
-  # أو اختصاراً:
-  detect_unused -i
+
+  # إجراء فحص تدقيقي تقليدي في الطرفية بدون فتح لوحة التحكم:
+  detect_unused --scan
 
   # التراجع الفوري بخطوة واحدة عن آخر عملية تنظيف (Undo):
   detect_unused --undo
