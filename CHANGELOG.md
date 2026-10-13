@@ -1,6 +1,7 @@
 ## 3.0.0
 
 - **Interactive Terminal UI (TUI) Dashboard (`--interactive` / `-i`):**
+  - Automatically launches by default when executing `detect_unused` or `detect_unused_code` without command-line flags (use `--scan` or `--report` for non-interactive output).
   - Rich interactive terminal control panel wizard featuring zero external dependencies.
   - Interactive selection and toggles for 8 cleanable categories:
     - Dead Classes & Widgets

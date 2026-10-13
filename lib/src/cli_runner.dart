@@ -82,8 +82,46 @@ class CliRunner {
           deleteAfterRestore: deleteAfterRestore);
     }
 
-    // 3. Interactive TUI Dashboard
-    if (args.contains('--interactive') || args.contains('-i')) {
+    // 3. Interactive TUI Dashboard:
+    // Automatically launched by default when invoked without flags (`detect_unused` or `detect_unused_code`),
+    // or when explicitly requested via `--interactive` or `-i`.
+    final isExplicitNonInteractive = args.contains('--no-interactive') ||
+        args.contains('--non-interactive') ||
+        args.contains('--scan') ||
+        args.contains('--report') ||
+        args.contains('--cli');
+
+    final hasActionOrFilterFlags = args.any((a) =>
+        a.startsWith('--clean') ||
+        a.startsWith('--restore') ||
+        a.startsWith('--backups') ||
+        a.startsWith('--list-backups') ||
+        a.startsWith('--delete-backups') ||
+        a.startsWith('--markdown') ||
+        a.startsWith('--report-md') ||
+        a.startsWith('--json') ||
+        a.startsWith('--packages') ||
+        a.startsWith('--audit-packages') ||
+        a.startsWith('--assets') ||
+        a.startsWith('--audit-assets') ||
+        a.startsWith('--unused-classes') ||
+        a.startsWith('--classes') ||
+        a.startsWith('--commented') ||
+        a.startsWith('--comments') ||
+        a.startsWith('--todos-only') ||
+        a.startsWith('--diagnostics-only') ||
+        a.startsWith('--dry-run') ||
+        a.startsWith('--threshold') ||
+        a.startsWith('--min-lines') ||
+        a == '-v' ||
+        a == '--verbose');
+
+    final shouldLaunchTui = !isExplicitNonInteractive &&
+        (args.contains('--interactive') ||
+            args.contains('-i') ||
+            (!hasActionOrFilterFlags && (args.isEmpty || targetArg != null)));
+
+    if (shouldLaunchTui) {
       final tui = InteractiveTui(
         projectRoot: projectRoot,
         options: AuditorOptions(targetPath: targetArg),
@@ -1661,7 +1699,7 @@ class CliRunner {
 
     for (int i = 0; i < args.length; i++) {
       final a = args[i];
-      if (a.startsWith('-')) {
+      if (a.startsWith('-') || a.toLowerCase() == 'undo') {
         continue;
       }
       if (i > 0 &&
@@ -1781,6 +1819,11 @@ INTERACTIVE DASHBOARD & TUI:
   --interactive, -i        Launch the interactive terminal dashboard wizard (TUI)
                            featuring live category toggles [1-8], dry-run simulation,
                            selective cleanup, and instant rollback.
+                           (Note: Launches automatically by default when running
+                           `detect_unused` or `detect_unused_code` without flags).
+
+  --scan, --report,        Run the standard non-interactive terminal audit report
+  --no-interactive         instead of opening the interactive dashboard.
 
 OUTPUT FORMATS:
   --markdown,              Generate a GitHub-Flavored Markdown (GFM) summary report
@@ -1798,11 +1841,11 @@ OUTPUT FORMATS:
   --version, -V            Display the package version and exit.
 
 EXAMPLES:
-  # Launch the interactive terminal UI (TUI) dashboard
-  detect_unused --interactive
-
-  # Comprehensive audit of current project (all checks)
+  # Launch the interactive terminal UI (TUI) dashboard (default behavior)
   detect_unused
+
+  # Run standard non-interactive terminal audit
+  detect_unused --scan
 
   # Generate CI/CD Markdown report
   detect_unused --markdown
