@@ -1,3 +1,20 @@
+## 2.3.0
+
+- **External Package Dependencies Auditing Engine (`--packages` / `--audit-packages`):**
+  - Added full detection of unused runtime (`dependencies:`) and development (`dev_dependencies:`) packages declared in `pubspec.yaml` but never imported or referenced in Dart source code.
+  - Isolated per-package scoping: each `pubspec.yaml` across monorepos and nested sub-packages is evaluated strictly against its own package code scope, preventing false negatives where an import in a sub-package excuses an unused dependency in the root.
+  - Zero false-positives guard: protects core SDK frameworks (`flutter`, `flutter_test`, `flutter_localizations`), CLI tools, linters (`lints`, `flutter_lints`, `custom_lint`), code generators and builders (`build_runner`, `json_serializable`, `freezed`, etc.), and `build.yaml` configurations.
+- **Duplicate Dependency Detection:**
+  - Automatically identifies duplicate package declarations within the same `pubspec.yaml` (duplicate entries under `dependencies:` or duplicated across both `dependencies:` and `dev_dependencies:`).
+- **Safe Surgical Dependency Pruning (`--clean-packages`):**
+  - Dedicated dependency cleaner with automatic pre-modification backup snapshot to `.detect_unused/backups/<id>/files/`.
+  - Surgically removes both single-line (`pkg: ^1.0.0`) and multi-line (`git:`, `path:`, `hosted:`) dependency blocks from targeted `pubspec.yaml` files.
+  - Preserves surrounding indentation, spacing, and comments.
+  - Full instant rollback support via `detect_unused --restore <id>`.
+  - Integrated into `--clean-all` as Step 9.
+- **Automated Test Suite:**
+  - Added comprehensive automated unit and integration tests under `test/dependency_auditor_test.dart` covering multi-pubspec scoping, duplicate detection, and surgical pruning.
+
 ## 2.2.0
 
 - **Assets, Images & Fonts Auditing Engine (`--assets` / `--audit-assets`):**
