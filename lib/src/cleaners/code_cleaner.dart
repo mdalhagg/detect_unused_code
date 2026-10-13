@@ -279,6 +279,7 @@ class CodeCleaner {
     }
 
     final targetFiles = files
+        .where((f) => !isGeneratedDartFile(f.absolutePath))
         .map((f) => File(f.absolutePath))
         .where((f) => f.existsSync())
         .toList();
@@ -294,6 +295,9 @@ class CodeCleaner {
 
     final deleted = <String>[];
     for (final f in files) {
+      if (isGeneratedDartFile(f.absolutePath)) {
+        continue;
+      }
       final file = File(f.absolutePath);
       if (file.existsSync()) {
         if (!dryRun) {
@@ -318,8 +322,10 @@ class CodeCleaner {
     bool dryRun = false,
     bool createBackup = true,
   }) {
-    final validTargets =
-        filesWithBlocks.where((f) => f.blocks.isNotEmpty).toList();
+    final validTargets = filesWithBlocks
+        .where(
+            (f) => f.blocks.isNotEmpty && !isGeneratedDartFile(f.absolutePath))
+        .toList();
     if (validTargets.isEmpty) {
       return CleanResult(action: 'Clean Dead Blocks', success: true);
     }
@@ -341,6 +347,9 @@ class CodeCleaner {
     int removedBlocksCount = 0;
 
     for (final f in validTargets) {
+      if (isGeneratedDartFile(f.absolutePath)) {
+        continue;
+      }
       final file = File(f.absolutePath);
       if (!file.existsSync()) {
         continue;
@@ -350,6 +359,10 @@ class CodeCleaner {
       try {
         content = file.readAsStringSync();
       } catch (_) {
+        continue;
+      }
+
+      if (hasFileKeepUnusedDirective(content)) {
         continue;
       }
 
@@ -405,8 +418,11 @@ class CodeCleaner {
       byFile.putIfAbsent(c.file, () => []).add(c);
     }
 
-    final targetFiles =
-        byFile.keys.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    final targetFiles = byFile.keys
+        .where((p) => !isGeneratedDartFile(p))
+        .map((p) => File(p))
+        .where((f) => f.existsSync())
+        .toList();
     BackupManifest? manifest;
 
     if (!dryRun && createBackup && targetFiles.isNotEmpty) {
@@ -422,6 +438,9 @@ class CodeCleaner {
 
     for (final entry in byFile.entries) {
       final filePath = entry.key;
+      if (isGeneratedDartFile(filePath)) {
+        continue;
+      }
       final classes = entry.value;
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -435,6 +454,10 @@ class CodeCleaner {
         continue;
       }
 
+      if (hasFileKeepUnusedDirective(content)) {
+        continue;
+      }
+
       final lines = content.split(RegExp(r'\r?\n'));
 
       // Sort classes from bottom of the file to top
@@ -443,6 +466,10 @@ class CodeCleaner {
       for (final c in classes) {
         final declIndex = _findDeclarationLine(lines, c.name, c.line);
         if (declIndex == -1) {
+          continue;
+        }
+
+        if (hasKeepUnusedDirective(lines, declIndex)) {
           continue;
         }
 
@@ -522,8 +549,11 @@ class CodeCleaner {
       byFile.putIfAbsent(c.file, () => []).add(c);
     }
 
-    final targetFiles =
-        byFile.keys.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    final targetFiles = byFile.keys
+        .where((p) => !isGeneratedDartFile(p))
+        .map((p) => File(p))
+        .where((f) => f.existsSync())
+        .toList();
     BackupManifest? manifest;
 
     if (!dryRun && createBackup && targetFiles.isNotEmpty) {
@@ -538,6 +568,9 @@ class CodeCleaner {
 
     for (final entry in byFile.entries) {
       final filePath = entry.key;
+      if (isGeneratedDartFile(filePath)) {
+        continue;
+      }
       final classes = entry.value;
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -551,9 +584,17 @@ class CodeCleaner {
         continue;
       }
 
+      if (hasFileKeepUnusedDirective(content)) {
+        continue;
+      }
+
       var updated = content;
+      final lines = content.split('\n');
       for (final c in classes) {
         if (c.name.startsWith('_')) {
+          continue;
+        }
+        if (hasKeepUnusedDirective(lines, c.line - 1)) {
           continue;
         }
         final pattern = RegExp(r'\b' + RegExp.escape(c.name) + r'\b');
@@ -673,8 +714,11 @@ class CodeCleaner {
       byFile.putIfAbsent(t.absolutePath, () => []).add(t);
     }
 
-    final targetFiles =
-        byFile.keys.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    final targetFiles = byFile.keys
+        .where((p) => !isGeneratedDartFile(p))
+        .map((p) => File(p))
+        .where((f) => f.existsSync())
+        .toList();
     BackupManifest? manifest;
 
     if (!dryRun && createBackup && targetFiles.isNotEmpty) {
@@ -689,6 +733,9 @@ class CodeCleaner {
 
     for (final entry in byFile.entries) {
       final filePath = entry.key;
+      if (isGeneratedDartFile(filePath)) {
+        continue;
+      }
       final fileTodos = entry.value;
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -699,6 +746,10 @@ class CodeCleaner {
       try {
         content = file.readAsStringSync();
       } catch (_) {
+        continue;
+      }
+
+      if (hasFileKeepUnusedDirective(content)) {
         continue;
       }
 
@@ -759,8 +810,11 @@ class CodeCleaner {
       byFile.putIfAbsent(d.absolutePath, () => []).add(d);
     }
 
-    final targetFiles =
-        byFile.keys.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    final targetFiles = byFile.keys
+        .where((p) => !isGeneratedDartFile(p))
+        .map((p) => File(p))
+        .where((f) => f.existsSync())
+        .toList();
     BackupManifest? manifest;
 
     if (!dryRun && createBackup && targetFiles.isNotEmpty) {
@@ -775,6 +829,9 @@ class CodeCleaner {
 
     for (final entry in byFile.entries) {
       final filePath = entry.key;
+      if (isGeneratedDartFile(filePath)) {
+        continue;
+      }
       final imports = entry.value;
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -785,6 +842,10 @@ class CodeCleaner {
       try {
         content = file.readAsStringSync();
       } catch (_) {
+        continue;
+      }
+
+      if (hasFileKeepUnusedDirective(content)) {
         continue;
       }
 
@@ -836,8 +897,11 @@ class CodeCleaner {
       byFile.putIfAbsent(d.absolutePath, () => []).add(d);
     }
 
-    final targetFiles =
-        byFile.keys.map((p) => File(p)).where((f) => f.existsSync()).toList();
+    final targetFiles = byFile.keys
+        .where((p) => !isGeneratedDartFile(p))
+        .map((p) => File(p))
+        .where((f) => f.existsSync())
+        .toList();
     BackupManifest? manifest;
 
     if (!dryRun && createBackup && targetFiles.isNotEmpty) {
@@ -852,6 +916,9 @@ class CodeCleaner {
 
     for (final entry in byFile.entries) {
       final filePath = entry.key;
+      if (isGeneratedDartFile(filePath)) {
+        continue;
+      }
       final items = entry.value;
       final file = File(filePath);
       if (!file.existsSync()) {
@@ -862,6 +929,10 @@ class CodeCleaner {
       try {
         content = file.readAsStringSync();
       } catch (_) {
+        continue;
+      }
+
+      if (hasFileKeepUnusedDirective(content)) {
         continue;
       }
 

@@ -458,6 +458,17 @@ class AuditorOptions {
   /// Whether to enable verbose logging with snippet samples.
   final bool verbose;
 
+  /// Whether to automatically exclude generated files (*.g.dart, *.freezed.dart, etc.)
+  /// from being audited as dead code or targeted by remediation cleaners.
+  final bool excludeGenerated;
+
+  /// Whether to automatically protect classes registered or annotated with Dependency Injection
+  /// patterns (@injectable, @singleton, @lazySingleton, etc.).
+  final bool protectDiClasses;
+
+  /// Custom glob patterns or suffixes to exclude from being audited.
+  final List<String> customExcludes;
+
   /// Creates a new [AuditorOptions] configuration.
   const AuditorOptions({
     this.targetPath,
@@ -469,5 +480,8 @@ class AuditorOptions {
     this.commentThreshold = 60,
     this.minBlockLines = 15,
     this.verbose = false,
+    this.excludeGenerated = true,
+    this.protectDiClasses = true,
+    this.customExcludes = const [],
   });
 }

@@ -1,3 +1,23 @@
+## 2.4.0
+
+- **Generated Code Auto-Exclusion Engine:**
+  - Automatically identifies and excludes auto-generated source files (`*.g.dart`, `*.freezed.dart`, `*.mocks.dart`, `*.config.dart`, `*.gr.dart`, `*.gen.dart`, `*.drift.dart`, `*.reflectable.dart`, etc.) from dead code auditing, diagnostic reports, and automated cleanup.
+  - Maintains full reference resolution: generated files continue to be indexed for references so that original models (e.g., `User` used in `user.g.dart`) are correctly recognized as active.
+  - Hardened `CodeCleaner` security guard: strictly prevents modifying or deleting any generated file under any cleanup flag.
+- **Directives & Annotation Preservation Engine:**
+  - Added support for class-level preservation directives: `// @keepUnused`, `/// @keepUnused`, `// keep-unused`, `// ignore: unused_code`, and `@keepUnused` annotations.
+  - Added support for file-level preservation directives: `// ignore_for_file: unused_code` and `// @keepUnusedFile`.
+  - Preserved elements are safely bypassed from dead class reports, internal privatizations, and cleaner deletions.
+- **Dependency Injection (DI) & Framework Guards:**
+  - Automatically protects classes decorated with Dependency Injection, Service Locator, or modular annotations (`@injectable`, `@singleton`, `@lazySingleton`, `@module`, `@named`, `@factoryMethod`, `@riverpod`, `@entrypoint`, `@pragma`).
+  - Eliminates false-positives for services and repositories that are constructed indirectly via DI code generation or locator registries.
+- **CLI Options & Tuning:**
+  - Added `--exclude-generated` (enabled by default) and `--include-generated` to control generated file auditing.
+  - Added `--no-di-guards` to disable DI pattern protection when desired.
+  - Added `--exclude=<patterns>` to specify custom file exclusions or glob patterns.
+- **Automated Test Suite:**
+  - Added comprehensive automated unit and integration tests under `test/code_precision_test.dart` (100% passing).
+
 ## 2.3.0
 
 - **External Package Dependencies Auditing Engine (`--packages` / `--audit-packages`):**

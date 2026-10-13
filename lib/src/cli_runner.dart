@@ -306,6 +306,29 @@ class CliRunner {
             !onlyCommented &&
             !onlyTodos);
 
+    final includeGenerated = args.contains('--include-generated') ||
+        args.contains('--no-exclude-generated');
+    final excludeGenerated = !includeGenerated;
+
+    final noDiGuards = args.contains('--no-di-guards');
+    final protectDiClasses = !noDiGuards;
+
+    final customExcludes = <String>[];
+    for (int i = 0; i < args.length; i++) {
+      final a = args[i];
+      if (a.startsWith('--exclude=')) {
+        final val = a.substring('--exclude='.length).trim();
+        customExcludes.addAll(
+            val.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty));
+      } else if (a == '--exclude' && i + 1 < args.length) {
+        final next = args[i + 1].trim();
+        if (!next.startsWith('--')) {
+          customExcludes.addAll(
+              next.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty));
+        }
+      }
+    }
+
     final options = AuditorOptions(
       targetPath: targetArg,
       runClassAnalysis: runClassAnalysis,
@@ -316,6 +339,9 @@ class CliRunner {
       commentThreshold: commentThreshold,
       minBlockLines: minBlockLines,
       verbose: verbose,
+      excludeGenerated: excludeGenerated,
+      protectDiClasses: protectDiClasses,
+      customExcludes: customExcludes,
     );
 
     final auditor = UnusedCodeAuditor(
@@ -1648,6 +1674,11 @@ ANALYSIS FILTER FLAGS:
   --no-internal            Exclude file-internal only public classes from the report.
 
 FILTERING & TUNING:
+  --exclude-generated      Exclude generated files (*.g.dart, *.freezed.dart, etc.)
+                           from dead code auditing and remediation (enabled by default).
+  --include-generated      Force auditor to include generated files in audit targets.
+  --no-di-guards           Disable automatic protection for Dependency Injection annotations (@injectable, etc.).
+  --exclude <patterns>     Exclude custom file patterns or comma-separated globs (e.g. "test/mocks/*").
   --threshold <number>     Comment ratio percentage (1-100) to flag a file as heavily
                            commented-out.
                            Default: 60 (i.e. files with >= 60% comments).

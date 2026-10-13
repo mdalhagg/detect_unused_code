@@ -27,7 +27,14 @@ export 'src/models.dart'
         TodoItemResult,
         DiagnosticIssueResult;
 export 'src/utils.dart'
-    show findProjectOrWorkspaceRoot, resolveTargetPath, walkDartFiles;
+    show
+        findProjectOrWorkspaceRoot,
+        resolveTargetPath,
+        walkDartFiles,
+        isGeneratedDartFile,
+        hasKeepUnusedDirective,
+        hasFileKeepUnusedDirective,
+        hasDependencyInjectionAnnotation;
 export 'src/assets/asset_models.dart'
     show
         AssetCategory,
