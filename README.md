@@ -223,15 +223,16 @@ Version `3.0.0` introduces a powerful **Interactive Terminal UI (TUI)** and **In
 ```
 
 ```bash
-# Launch the Interactive Terminal UI (TUI) Dashboard (Default behavior):
+# Fast, comprehensive static code audit (Default behavior):
 detect_unused
-# or using the full executable name:
-detect_unused_code
-# or with explicit flag:
-detect_unused --interactive
 
-# Run standard non-interactive terminal audit instead of dashboard:
-detect_unused --scan
+# Or using the full executable name:
+detect_unused_code
+
+# Launch the Interactive Terminal UI (TUI) Dashboard (Opt-in wizard):
+detect_unused --interactive
+# or using short flag:
+detect_unused -i
 
 # Instant single-step rollback of the latest cleanup snapshot:
 detect_unused --undo
@@ -326,6 +327,9 @@ detect_unused --version
 | `--dry-run` | - | `false` | Preview cleanup changes without touching disk |
 | `--yes` | `-y` | `false` | Skip interactive confirmation prompt |
 | `--no-backup` | - | `false` | Bypass automatic snapshot backup (not recommended) |
+| `--interactive` | `-i` | `false` | Launch interactive terminal dashboard wizard (TUI) |
+| `--undo` / `undo` | - | `false` | Instant single-step rollback of the latest cleanup snapshot |
+| `--markdown [file]` | `--report-md` | `false` | Generate GitHub Flavored Markdown (GFM) summary report for CI/CD |
 | `--backups` | `--list-backups` | `false` | List all available snapshot backups |
 | `--clean-backups` | - | `false` | Delete all snapshot archives from disk |
 | `--restore <id>` | - | - | Restore active project files from backup ID (auto-cleans snapshot) |

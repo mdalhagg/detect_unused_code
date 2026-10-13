@@ -5,10 +5,9 @@ import 'assets/asset_auditor.dart';
 import 'assets/asset_models.dart';
 import 'auditor.dart';
 import 'backup/backup_manager.dart';
-import 'backup/backup_manifest.dart';
 import 'cleaners/asset_cleaner.dart';
-import 'cleaners/code_cleaner.dart';
 import 'cleaners/dep_cleaner.dart';
+import 'cleaners/staged_cleaner.dart';
 import 'models.dart';
 import 'packages/dep_auditor.dart';
 import 'reporters/markdown_reporter.dart';
@@ -82,46 +81,8 @@ class CliRunner {
           deleteAfterRestore: deleteAfterRestore);
     }
 
-    // 3. Interactive TUI Dashboard:
-    // Automatically launched by default when invoked without flags (`detect_unused` or `detect_unused_code`),
-    // or when explicitly requested via `--interactive` or `-i`.
-    final isExplicitNonInteractive = args.contains('--no-interactive') ||
-        args.contains('--non-interactive') ||
-        args.contains('--scan') ||
-        args.contains('--report') ||
-        args.contains('--cli');
-
-    final hasActionOrFilterFlags = args.any((a) =>
-        a.startsWith('--clean') ||
-        a.startsWith('--restore') ||
-        a.startsWith('--backups') ||
-        a.startsWith('--list-backups') ||
-        a.startsWith('--delete-backups') ||
-        a.startsWith('--markdown') ||
-        a.startsWith('--report-md') ||
-        a.startsWith('--json') ||
-        a.startsWith('--packages') ||
-        a.startsWith('--audit-packages') ||
-        a.startsWith('--assets') ||
-        a.startsWith('--audit-assets') ||
-        a.startsWith('--unused-classes') ||
-        a.startsWith('--classes') ||
-        a.startsWith('--commented') ||
-        a.startsWith('--comments') ||
-        a.startsWith('--todos-only') ||
-        a.startsWith('--diagnostics-only') ||
-        a.startsWith('--dry-run') ||
-        a.startsWith('--threshold') ||
-        a.startsWith('--min-lines') ||
-        a == '-v' ||
-        a == '--verbose');
-
-    final shouldLaunchTui = !isExplicitNonInteractive &&
-        (args.contains('--interactive') ||
-            args.contains('-i') ||
-            (!hasActionOrFilterFlags && (args.isEmpty || targetArg != null)));
-
-    if (shouldLaunchTui) {
+    // 3. Interactive TUI Dashboard (Opt-in via --interactive or -i)
+    if (args.contains('--interactive') || args.contains('-i')) {
       final tui = InteractiveTui(
         projectRoot: projectRoot,
         options: AuditorOptions(targetPath: targetArg),
@@ -302,6 +263,8 @@ class CliRunner {
         cleanTodos: cleanTodos,
         cleanUnusedImports: cleanUnusedImports,
         cleanDeadCode: cleanDeadCode,
+        cleanAssets: cleanAssets,
+        cleanPackages: cleanPackages,
         dryRun: dryRun,
         isYes: isYes,
         noBackup: noBackup,
@@ -897,560 +860,35 @@ class CliRunner {
     required bool cleanTodos,
     required bool cleanUnusedImports,
     required bool cleanDeadCode,
+    bool cleanAssets = false,
+    bool cleanPackages = false,
     required bool dryRun,
     required bool isYes,
     required bool noBackup,
     required AuditorProgressCallback onProgress,
   }) {
-    final auditor = UnusedCodeAuditor(
+    final runner = StagedCleanupRunner(
       projectRoot: projectRoot,
-      options: AuditorOptions(
-        targetPath: targetArg,
-        runClassAnalysis: cleanAll || cleanDeadClasses || privatizeInternal,
-        runCommentAnalysis: cleanAll || cleanCommented || cleanDeadBlocks,
-        includeInternal: cleanAll || privatizeInternal,
-        runTodoAnalysis: cleanAll || cleanTodos,
-        runDiagnostics: cleanAll || cleanUnusedImports || cleanDeadCode,
-        commentThreshold: commentThreshold,
-        minBlockLines: minBlockLines,
-        verbose: verbose,
-      ),
+      targetArg: targetArg,
+      commentThreshold: commentThreshold,
+      minBlockLines: minBlockLines,
+      verbose: verbose,
+      cleanAll: cleanAll,
+      cleanCommented: cleanCommented,
+      cleanDeadBlocks: cleanDeadBlocks,
+      cleanDeadClasses: cleanDeadClasses,
+      privatizeInternal: privatizeInternal,
+      cleanTodos: cleanTodos,
+      cleanUnusedImports: cleanUnusedImports,
+      cleanDeadCode: cleanDeadCode,
+      cleanAssets: cleanAssets,
+      cleanPackages: cleanPackages,
+      dryRun: dryRun,
+      isYes: isYes,
+      noBackup: noBackup,
+      onProgress: onProgress,
     );
-
-    final report = auditor.run(onProgress: onProgress);
-    stdout.writeln('\n');
-
-    final filesToDelete = (cleanAll || cleanCommented)
-        ? report.fullyCommentedFiles
-        : <CommentedFileResult>[];
-    final blocksToClean = (cleanAll || cleanDeadBlocks)
-        ? report.filesWithCommentBlocks
-        : <CommentedFileResult>[];
-    final deadClassesToClean = (cleanAll || cleanDeadClasses)
-        ? report.deadClasses
-        : <UnusedClassResult>[];
-    final internalClassesToClean = (cleanAll || privatizeInternal)
-        ? report.internalOnlyClasses
-        : <UnusedClassResult>[];
-    final todosToClean =
-        (cleanAll || cleanTodos) ? report.todos : <TodoItemResult>[];
-    final importsToClean = (cleanAll || cleanUnusedImports)
-        ? report.unusedImports
-        : <DiagnosticIssueResult>[];
-    final deadCodeToClean = (cleanAll || cleanDeadCode)
-        ? report.deadCodeAndExpressions
-        : <DiagnosticIssueResult>[];
-
-    final totalTargets = filesToDelete.length +
-        blocksToClean.length +
-        deadClassesToClean.length +
-        internalClassesToClean.length +
-        todosToClean.length +
-        importsToClean.length +
-        deadCodeToClean.length;
-
-    if (totalTargets == 0) {
-      print(
-          '================================================================================');
-      print(
-          '✨ CLEANUP SUMMARY: Nothing to clean! All code is active and in top shape.');
-      print(
-          '================================================================================');
-      return 0;
-    }
-
-    print(
-        '================================================================================');
-    print('🧹 DETECT_UNUSED_CODE: PLANNED REMEDIATION');
-    print(
-        '================================================================================');
-    if (filesToDelete.isNotEmpty) {
-      print('  🗑️ Fully Commented Files to Delete (${filesToDelete.length}):');
-      for (final f in filesToDelete) {
-        print('     - ${f.file}');
-      }
-    }
-    if (blocksToClean.isNotEmpty) {
-      final totalBlocks =
-          blocksToClean.fold<int>(0, (sum, f) => sum + f.blocks.length);
-      print(
-          '  ✂️ Dead Comment Blocks to Remove ($totalBlocks blocks in ${blocksToClean.length} files):');
-      for (final f in blocksToClean) {
-        print('     - ${f.file} (${f.blocks.length} block(s))');
-      }
-    }
-    if (deadClassesToClean.isNotEmpty) {
-      print('  💀 Dead Classes to Remove (${deadClassesToClean.length}):');
-      for (final c in deadClassesToClean) {
-        print('     - ${c.name} in ${c.relPath}');
-      }
-    }
-    if (internalClassesToClean.isNotEmpty) {
-      print(
-          '  🔒 File-Internal Classes to Privatize (${internalClassesToClean.length}):');
-      for (final c in internalClassesToClean) {
-        print('     - ${c.name} -> _${c.name} in ${c.relPath}');
-      }
-    }
-    if (todosToClean.isNotEmpty) {
-      print('  📝 TODO Comments to Clean (${todosToClean.length}):');
-      for (final t in todosToClean.take(10)) {
-        print('     - ${t.file}:${t.line} - ${t.message}');
-      }
-      if (todosToClean.length > 10) {
-        print('     ... and ${todosToClean.length - 10} more');
-      }
-    }
-    if (importsToClean.isNotEmpty) {
-      print(
-          '  📦 Unused & Unnecessary Imports to Remove (${importsToClean.length}):');
-      for (final i in importsToClean) {
-        print('     - ${i.file}:${i.line} (${i.message})');
-      }
-    }
-    if (deadCodeToClean.isNotEmpty) {
-      print(
-          '  ⚡ Dead Code & Expressions to Remediate (${deadCodeToClean.length}):');
-      for (final d in deadCodeToClean) {
-        print('     - ${d.file}:${d.line} (${d.message})');
-      }
-    }
-    print(
-        '--------------------------------------------------------------------------------');
-
-    if (dryRun) {
-      print(
-          '🔍 [DRY-RUN]: Simulation complete. No files on disk were modified.');
-      print(
-          'ℹ️ In active execution, detect_unused will execute cleanup step-by-step,');
-      print(
-          '   re-auditing between each category to ensure exact AST line integrity.');
-      return 0;
-    }
-
-    if (!isYes) {
-      stdout.write(
-          '⚠️ Are you sure you want to proceed with this step-by-step cleanup? [y/N]: ');
-      final input = stdin.readLineSync()?.trim().toLowerCase();
-      if (input != 'y' && input != 'yes') {
-        print('❌ Cleanup aborted by user. No files were modified.');
-        return 0;
-      }
-    }
-
-    final cleaner = CodeCleaner(projectRoot);
-
-    final stages = <_CleanupStage>[];
-
-    if (cleanAll || cleanCommented) {
-      stages.add(_CleanupStage(
-        id: 'commented_files',
-        title: 'Fully Commented Files',
-        emoji: '🗑️',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runCommentAnalysis: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.fullyCommentedFiles.isNotEmpty,
-        targetsCount: (report) => report.fullyCommentedFiles.length,
-        getTargetFilesToBackup: (report, cleaner) => report.fullyCommentedFiles
-            .map((f) => cleaner.resolveFile(f.absolutePath))
-            .where((f) => f.existsSync())
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => report
-            .fullyCommentedFiles
-            .map((f) => cleaner.resolveFile(f.absolutePath).path)
-            .toList(),
-        execute: (report, cleaner) => cleaner.cleanCommentedFiles(
-          report.fullyCommentedFiles,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || cleanDeadClasses) {
-      stages.add(_CleanupStage(
-        id: 'dead_classes',
-        title: 'Dead Classes & Widgets',
-        emoji: '💀',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runClassAnalysis: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.deadClasses.isNotEmpty,
-        targetsCount: (report) => report.deadClasses.length,
-        getTargetFilesToBackup: (report, cleaner) => report.deadClasses
-            .map((c) => cleaner.resolveFile(c.file))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.cleanDeadClasses(
-          report.deadClasses,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || cleanDeadBlocks) {
-      stages.add(_CleanupStage(
-        id: 'dead_blocks',
-        title: 'Dead Comment Blocks',
-        emoji: '✂️',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runCommentAnalysis: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.filesWithCommentBlocks.isNotEmpty,
-        targetsCount: (report) => report.filesWithCommentBlocks
-            .fold<int>(0, (sum, f) => sum + f.blocks.length),
-        getTargetFilesToBackup: (report, cleaner) => report
-            .filesWithCommentBlocks
-            .map((b) => cleaner.resolveFile(b.absolutePath))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.cleanDeadBlocks(
-          report.filesWithCommentBlocks,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || privatizeInternal) {
-      stages.add(_CleanupStage(
-        id: 'privatize_internal',
-        title: 'File-Internal Classes (Privatization)',
-        emoji: '🔒',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runClassAnalysis: true,
-            includeInternal: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.internalOnlyClasses.isNotEmpty,
-        targetsCount: (report) => report.internalOnlyClasses.length,
-        getTargetFilesToBackup: (report, cleaner) => report.internalOnlyClasses
-            .map((c) => cleaner.resolveFile(c.file))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.privatizeInternalClasses(
-          report.internalOnlyClasses,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || cleanDeadCode) {
-      stages.add(_CleanupStage(
-        id: 'dead_code',
-        title: 'Dead Code & Null-Aware Expressions',
-        emoji: '⚡',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runDiagnostics: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.deadCodeAndExpressions.isNotEmpty,
-        targetsCount: (report) => report.deadCodeAndExpressions.length,
-        getTargetFilesToBackup: (report, cleaner) => report
-            .deadCodeAndExpressions
-            .map((d) => cleaner.resolveFile(d.absolutePath))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.cleanDeadNullAware(
-          report.deadCodeAndExpressions,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || cleanTodos) {
-      stages.add(_CleanupStage(
-        id: 'todos',
-        title: 'TODO Comments',
-        emoji: '📝',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runTodoAnalysis: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.todos.isNotEmpty,
-        targetsCount: (report) => report.todos.length,
-        getTargetFilesToBackup: (report, cleaner) => report.todos
-            .map((t) => cleaner.resolveFile(t.absolutePath))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.cleanTodos(
-          report.todos,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    if (cleanAll || cleanUnusedImports) {
-      stages.add(_CleanupStage(
-        id: 'unused_imports',
-        title: 'Unused Imports',
-        emoji: '📦',
-        createAuditor: () => UnusedCodeAuditor(
-          projectRoot: projectRoot,
-          options: AuditorOptions(
-            targetPath: targetArg,
-            runDiagnostics: true,
-            commentThreshold: commentThreshold,
-            minBlockLines: minBlockLines,
-            verbose: verbose,
-          ),
-        ),
-        hasTargets: (report) => report.unusedImports.isNotEmpty,
-        targetsCount: (report) => report.unusedImports.length,
-        getTargetFilesToBackup: (report, cleaner) => report.unusedImports
-            .map((d) => cleaner.resolveFile(d.absolutePath))
-            .where((f) => f.existsSync())
-            .toSet()
-            .toList(),
-        getFilesMarkedForDeletion: (report, cleaner) => const <String>[],
-        execute: (report, cleaner) => cleaner.cleanUnusedImports(
-          report.unusedImports,
-          dryRun: false,
-          createBackup: false,
-        ),
-      ));
-    }
-
-    final totalStages = stages.length;
-    final allDeletedFiles = <String>{};
-    final allModifiedFiles = <String>{};
-    int totalRemediated = 0;
-    BackupManifest? sharedBackup;
-
-    print(
-        '\n================================================================================');
-    print('🚀 STARTING STEP-BY-STEP STAGED REMEDIATION ($totalStages Stages)');
-    print(
-        '================================================================================');
-
-    for (int i = 0; i < totalStages; i++) {
-      final stage = stages[i];
-      final stepNum = i + 1;
-
-      print(
-          '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      print(
-          '▶ [Step $stepNum/$totalStages] ${stage.emoji} Auditing & Remediating: ${stage.title}');
-      print(
-          '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      void stepProgress(int percent, String label) {
-        final clamped = percent.clamp(0, 100);
-        const barWidth = 24;
-        final filled = ((clamped / 100) * barWidth).round();
-        final empty = barWidth - filled;
-        final bar = '${'█' * filled}${'░' * (empty > 0 ? empty : 0)}';
-        final text =
-            '\r⏳ [Step $stepNum/$totalStages] [$bar] ${clamped.toString().padLeft(3)}% | $label';
-        stdout.write(text);
-      }
-
-      final stageAuditor = stage.createAuditor();
-      final stageReport = stageAuditor.run(onProgress: stepProgress);
-      stdout.writeln('\n');
-
-      if (!stage.hasTargets(stageReport)) {
-        print(
-            '  ✨ No ${stage.title.toLowerCase()} found in active code. Skipping.');
-        continue;
-      }
-
-      final count = stage.targetsCount(stageReport);
-      print('  🎯 Found $count item(s) to remediate in ${stage.title}.');
-
-      if (!noBackup) {
-        final filesToBackup =
-            stage.getTargetFilesToBackup(stageReport, cleaner);
-        final filesToDelete =
-            stage.getFilesMarkedForDeletion(stageReport, cleaner);
-
-        if (filesToBackup.isNotEmpty) {
-          if (sharedBackup == null) {
-            sharedBackup = cleaner.backupManager.createBackup(
-              action: 'Clean unused code (step $stepNum: ${stage.title})',
-              filesToBackup: filesToBackup,
-              filesMarkedForDeletion: filesToDelete,
-            );
-          } else {
-            cleaner.backupManager.appendToBackup(
-              sharedBackup,
-              filesToBackup,
-              filesMarkedForDeletion: filesToDelete,
-            );
-          }
-        }
-      }
-
-      final res = stage.execute(stageReport, cleaner);
-      allDeletedFiles.addAll(res.deletedFiles);
-      allModifiedFiles.addAll(res.modifiedFiles);
-      totalRemediated += res.totalItemsCleaned;
-
-      print(
-          '  ✅ [Step $stepNum/$totalStages] Successfully remediated ${res.totalItemsCleaned} item(s).');
-
-      // Auto-resolve dangling URI directives immediately if any files were deleted in this stage
-      if (res.deletedFiles.isNotEmpty) {
-        final danglingCheck = cleaner.verifyProjectHealth();
-        if (danglingCheck.hasDanglingUris) {
-          final removed = cleaner.cleanDanglingUriDirectives(
-            danglingCheck.errors,
-            backup: sharedBackup,
-          );
-          if (removed.isNotEmpty) {
-            print(
-                '  ✂️ Auto-removed ${removed.length} dangling import/export directive(s) after file deletion.');
-          }
-        }
-      }
-    }
-
-    print(
-        '\n================================================================================');
-    print('🎉 STEP-BY-STEP CLEANUP COMPLETED');
-    print(
-        '================================================================================');
-    print('  ✅ Files Deleted:    ${allDeletedFiles.length}');
-    print('  ✏️ Files Modified:   ${allModifiedFiles.length}');
-    print('  🎯 Items Remediated: $totalRemediated');
-    if (sharedBackup != null) {
-      print(
-          '  📦 Backup Snapshot:  #${sharedBackup.id} (${sharedBackup.backupDirName})');
-      print(
-          '     Restore command:  detect_unused --restore ${sharedBackup.id}');
-    }
-    print(
-        '--------------------------------------------------------------------------------');
-
-    stdout
-        .write('🔍 Verifying final project compilation and analyzer health...');
-    var health = cleaner.verifyProjectHealth();
-
-    // Auto-resolve dangling imports/exports referencing deleted files
-    if (health.hasDanglingUris) {
-      stdout.writeln(' ⚠️ Dangling references detected!\n');
-      print(
-          '================================================================================');
-      print('🧹 AUTO-RESOLVING DANGLING EXPORTS & IMPORTS');
-      print(
-          '================================================================================');
-      print('⚠️ Detected export/import directives referencing deleted files:');
-      for (final issue in health.errors.where((e) => e.isDanglingUri)) {
-        final relFile = getRelativePath(issue.file, projectRoot.path);
-        print(
-            '   ⚠️ [L${issue.line.toString().padRight(4)}] $relFile ➜ ${issue.message}');
-      }
-
-      print(
-          '\n⚙️ Automatically removing dangling directives from barrel & source files...');
-      final removed = cleaner.cleanDanglingUriDirectives(
-        health.errors,
-        backup: sharedBackup,
-      );
-
-      for (final item in removed) {
-        print(
-            '   ✂️ [L${item.line.toString().padRight(4)}] ${item.file} ➜ Removed: ${item.directive}');
-      }
-      print('✅ Successfully removed ${removed.length} dangling directive(s).');
-      print(
-          '--------------------------------------------------------------------------------');
-
-      // Re-verify compilation health after auto-fixing dangling directives
-      stdout
-          .write('🔍 Re-verifying project compilation and analyzer health...');
-      health = cleaner.verifyProjectHealth();
-    }
-
-    if (health.hasErrors) {
-      stdout.writeln(' ❌ Issues detected!\n');
-      print('⚠️ [WARNING] Compiler errors detected after cleanup:');
-      for (final err in health.errors) {
-        print('  - ${err.file}:${err.line} - ${err.message}');
-      }
-      if (sharedBackup != null) {
-        stdout.write(
-            '\n⚠️ Would you like to automatically rollback to Backup #${sharedBackup.id}? [Y/n]: ');
-        final rbInput = stdin.readLineSync()?.trim().toLowerCase();
-        if (rbInput == null ||
-            rbInput.isEmpty ||
-            rbInput == 'y' ||
-            rbInput == 'yes') {
-          final rb = cleaner.backupManager.restoreBackup(
-            sharedBackup.id,
-            deleteAfterRestore: true,
-          );
-          if (rb.success) {
-            print('🔄 Project successfully restored to pre-cleanup state!');
-            if (rb.snapshotDeleted) {
-              print(
-                  '  🗑️ Backup #${sharedBackup.id} folder was removed to free up disk space.');
-            }
-          } else {
-            print('❌ Restore failed: ${rb.message}');
-          }
-          return 1;
-        }
-      }
-    } else {
-      stdout.writeln(' ✅ Healthy (0 compiler errors)! All clean!');
-    }
-
-    return 0;
+    return runner.run();
   }
 
   void _printConsoleReport(
@@ -1819,11 +1257,8 @@ INTERACTIVE DASHBOARD & TUI:
   --interactive, -i        Launch the interactive terminal dashboard wizard (TUI)
                            featuring live category toggles [1-8], dry-run simulation,
                            selective cleanup, and instant rollback.
-                           (Note: Launches automatically by default when running
-                           `detect_unused` or `detect_unused_code` without flags).
 
-  --scan, --report,        Run the standard non-interactive terminal audit report
-  --no-interactive         instead of opening the interactive dashboard.
+  --scan, --report         Run the standard non-interactive terminal audit report.
 
 OUTPUT FORMATS:
   --markdown,              Generate a GitHub-Flavored Markdown (GFM) summary report
@@ -1841,11 +1276,11 @@ OUTPUT FORMATS:
   --version, -V            Display the package version and exit.
 
 EXAMPLES:
-  # Launch the interactive terminal UI (TUI) dashboard (default behavior)
+  # Fast, comprehensive static code audit (default behavior):
   detect_unused
 
-  # Run standard non-interactive terminal audit
-  detect_unused --scan
+  # Launch the interactive terminal dashboard (TUI):
+  detect_unused --interactive
 
   # Generate CI/CD Markdown report
   detect_unused --markdown
@@ -1875,50 +1310,4 @@ EXAMPLES:
   static void printVersion() {
     print('detect_unused version: $packageVersion');
   }
-}
-
-/// Represents an isolated, staged cleanup phase during --clean-all remediation.
-class _CleanupStage {
-  /// Unique identifier of the cleanup stage.
-  final String id;
-
-  /// User-facing descriptive title of the stage.
-  final String title;
-
-  /// Emoji representation for terminal UI display.
-  final String emoji;
-
-  /// Factory constructing a fresh [UnusedCodeAuditor] configured for this stage's scope.
-  final UnusedCodeAuditor Function() createAuditor;
-
-  /// Predicate checking if the stage report contains any actionable items.
-  final bool Function(AnalysisReport report) hasTargets;
-
-  /// Returns the count of detected target items in this stage.
-  final int Function(AnalysisReport report) targetsCount;
-
-  /// Resolves the files that must be preserved in backup before executing this stage.
-  final List<File> Function(AnalysisReport report, CodeCleaner cleaner)
-      getTargetFilesToBackup;
-
-  /// Resolves any files marked for deletion in this stage.
-  final List<String> Function(AnalysisReport report, CodeCleaner cleaner)
-      getFilesMarkedForDeletion;
-
-  /// Executes the cleanup logic for this stage.
-  final CleanResult Function(AnalysisReport report, CodeCleaner cleaner)
-      execute;
-
-  /// Creates a new [_CleanupStage].
-  _CleanupStage({
-    required this.id,
-    required this.title,
-    required this.emoji,
-    required this.createAuditor,
-    required this.hasTargets,
-    required this.targetsCount,
-    required this.getTargetFilesToBackup,
-    required this.getFilesMarkedForDeletion,
-    required this.execute,
-  });
 }

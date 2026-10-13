@@ -238,4 +238,27 @@ void main() {
       }
     });
   });
+
+  group('StagedCleanupRunner Tests', () {
+    test('Dry run on clean project reports nothing and exits 0', () {
+      final tempDir = Directory.systemTemp.createTempSync('staged_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')..createSync();
+        File('${libDir.path}/main.dart')
+            .writeAsStringSync('void main() { print("hello"); }\n');
+
+        final runner = StagedCleanupRunner(
+          projectRoot: tempDir,
+          cleanAll: true,
+          dryRun: true,
+          isYes: true,
+        );
+
+        final exitCode = runner.run();
+        expect(exitCode, equals(0));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+  });
 }
