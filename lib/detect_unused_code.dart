@@ -28,4 +28,14 @@ export 'src/models.dart'
         DiagnosticIssueResult;
 export 'src/utils.dart'
     show findProjectOrWorkspaceRoot, resolveTargetPath, walkDartFiles;
+export 'src/assets/asset_models.dart'
+    show
+        AssetCategory,
+        PackageDescriptor,
+        UnusedAssetItem,
+        AssetAnalysisReport,
+        formatByteSize;
+export 'src/assets/pubspec_scanner.dart' show PubspecScanner;
+export 'src/assets/asset_auditor.dart' show AssetAuditor, AssetProgressCallback;
+export 'src/cleaners/asset_cleaner.dart' show AssetCleaner, CleanAssetsResult;
 export 'src/version.dart' show packageVersion;

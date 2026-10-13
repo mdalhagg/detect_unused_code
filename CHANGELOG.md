@@ -1,3 +1,24 @@
+## 2.2.0
+
+- **Assets, Images & Fonts Auditing Engine (`--assets` / `--audit-assets`):**
+  - Added full detection of unused media assets across Dart and Flutter projects, including raster images (PNG, JPG, WEBP, GIF), vectors (SVG), animations (Lottie JSON, Rive), and fonts (TTF, OTF).
+  - Smart reference tracking supporting direct string paths, filenames, cross-package paths, and code-generator CamelCase identifiers (`flutter_gen` / `spider`).
+  - Screen resolution variant awareness: preserves `2.0x/`, `3.0x/`, etc., whenever the parent/base image is used.
+  - Font family tracking in `TextStyle(fontFamily: ...)` against `flutter -> fonts` in `pubspec.yaml`.
+  - Calculates and reports exact reclaimable disk space in B, KB, MB, and GB.
+- **Multi-Package & Monorepo Flexible Support:**
+  - Flexible recursive discovery of all `pubspec.yaml` files located anywhere in the workspace (root, `packages/`, `modules/`, nested sub-packages, Melos monorepos).
+  - Independent package context scoping (`PackageDescriptor`) mapping declared assets, fonts, and directory roots per package.
+  - Cross-package reference resolution (`packages/<package_name>/assets/...`).
+- **Safe Asset Pruning & Targeted Pubspec Updates (`--clean-assets`):**
+  - Dedicated asset cleaner with automatic backup snapshots to `.detect_unused/backups/<id>/files/` before deletion.
+  - Automatically prunes empty directories after deleting asset files.
+  - Targeted surgical line pruning: removes explicit asset declarations from the specific owning `pubspec.yaml` without affecting other packages or YAML formatting.
+  - Full rollback support via `detect_unused --restore <id>`.
+  - Integrated into `--clean-all` as Step 8.
+- **Automated Test Suite:**
+  - Added comprehensive automated unit and integration tests covering multi-pubspec discovery, asset auditing, resolution variants, and cleaner rollback.
+
 ## 2.1.2
 
 - Added automated GitHub Actions CI workflow (`.github/workflows/ci.yml`) verifying formatting, static analysis, and dry-run publishing on PRs and pushes.
