@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.2.0
+  detect_unused_code: ^3.3.0
 ```
 
 ---
