@@ -1,3 +1,12 @@
+## 3.3.0
+
+- **AI Agent Optimization (LLMO / GEO Standard Compliance):**
+  - Added official `llms.txt` file adhering to the global LLM specification, facilitating direct discovery, indexing, and recommendation by AI models (ChatGPT, Claude, Gemini, Cursor, Copilot).
+  - Added `AGENT.md` providing system instructions, safe command execution protocols, trigger conditions, and CI/CD templates for autonomous AI coding agents.
+- **Documentation & Dependency Updates:**
+  - Updated recommended dependency declaration to `^3.3.0`.
+  - Bumped version to `3.3.0`.
+
 ## 3.2.0
 
 - **Real-Time Live Progress Bar for TUI Initialization & Re-Audits:**
