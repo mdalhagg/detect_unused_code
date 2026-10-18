@@ -216,5 +216,204 @@ flutter:
       final backupDir = Directory('${tempDir.path}/.detect_unused/backups');
       expect(backupDir.existsSync(), isTrue);
     });
+
+    test(
+        'AssetCleaner: deletes unused font assets and prunes font declarations, weights, and empty families from pubspec.yaml',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: font_cleaner_test
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+    - family: AbandonedFont
+      fonts:
+        - asset: assets/fonts/Abandoned.ttf
+''');
+
+      final cairoRegular =
+          File('${tempDir.path}/assets/fonts/Cairo-Regular.ttf')
+            ..createSync(recursive: true);
+      cairoRegular.writeAsStringSync('cairo regular');
+
+      final cairoBold = File('${tempDir.path}/assets/fonts/Cairo-Bold.ttf')
+        ..createSync(recursive: true);
+      cairoBold.writeAsStringSync('cairo bold');
+
+      final abandoned = File('${tempDir.path}/assets/fonts/Abandoned.ttf')
+        ..createSync(recursive: true);
+      abandoned.writeAsStringSync('abandoned');
+
+      // Only Cairo-Regular is referenced in Dart code
+      final codeFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync("const font = 'Cairo-Regular.ttf';");
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      // Cairo-Bold and Abandoned are unused
+      expect(report.unusedAssets.length, equals(2));
+      expect(report.unusedAssets.every((a) => a.isExplicitInPubspec), isTrue);
+
+      final cleaner = AssetCleaner(workspaceRoot: tempDir);
+      final cleanResult = cleaner.clean(unusedAssets: report.unusedAssets);
+
+      expect(cleanResult.deletedFilesCount, equals(2));
+      expect(cairoRegular.existsSync(), isTrue);
+      expect(cairoBold.existsSync(), isFalse);
+      expect(abandoned.existsSync(), isFalse);
+
+      final pubspecContent = rootPubspec.readAsStringSync();
+
+      // Cairo-Regular must remain
+      expect(pubspecContent, contains('Cairo-Regular.ttf'));
+      expect(pubspecContent, contains('family: Cairo'));
+
+      // Cairo-Bold and its weight: 700 must be removed
+      expect(pubspecContent, isNot(contains('Cairo-Bold.ttf')));
+      expect(pubspecContent, isNot(contains('weight: 700')));
+
+      // AbandonedFont family had all assets removed, so the entire family must be gone
+      expect(pubspecContent, isNot(contains('AbandonedFont')));
+      expect(pubspecContent, isNot(contains('Abandoned.ttf')));
+    });
+
+    test(
+        'AssetCleaner: completely removes fonts: section when all font families are pruned',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: font_all_unused
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: DeadFont
+      fonts:
+        - asset: assets/fonts/Dead.ttf
+''');
+
+      final deadFont = File('${tempDir.path}/assets/fonts/Dead.ttf')
+        ..createSync(recursive: true);
+      deadFont.writeAsStringSync('dead');
+
+      final codeFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync('void main() {}');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(report.unusedAssets.length, equals(1));
+
+      final cleaner = AssetCleaner(workspaceRoot: tempDir);
+      final cleanResult = cleaner.clean(unusedAssets: report.unusedAssets);
+
+      expect(cleanResult.deletedFilesCount, equals(1));
+      expect(deadFont.existsSync(), isFalse);
+
+      final pubspecContent = rootPubspec.readAsStringSync();
+      expect(pubspecContent, isNot(contains('fonts:')));
+      expect(pubspecContent, isNot(contains('DeadFont')));
+      expect(pubspecContent, isNot(contains('Dead.ttf')));
+      expect(pubspecContent, contains('uses-material-design: true'));
+    });
+
+    test(
+        'AssetCleaner: removes empty directory asset patterns and empty assets: section',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: dir_cleaner_test
+flutter:
+  assets:
+    - assets/unused_icons/
+''');
+
+      final icon = File('${tempDir.path}/assets/unused_icons/old_icon.png')
+        ..createSync(recursive: true);
+      icon.writeAsStringSync('icon');
+
+      final codeFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync('void main() {}');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(report.unusedAssets.length, equals(1));
+
+      final cleaner = AssetCleaner(workspaceRoot: tempDir);
+      final cleanResult = cleaner.clean(unusedAssets: report.unusedAssets);
+
+      expect(cleanResult.deletedFilesCount, equals(1));
+      expect(icon.existsSync(), isFalse);
+
+      final pubspecContent = rootPubspec.readAsStringSync();
+      expect(pubspecContent, isNot(contains('assets:')));
+      expect(pubspecContent, isNot(contains('unused_icons/')));
+    });
+
+    test(
+        'AssetCleaner: cleans font asset declared in both flutter.assets and flutter.fonts simultaneously',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: dual_declaration_test
+flutter:
+  assets:
+    - assets/fonts/CustomFont.ttf
+    - assets/images/app_logo.png
+  fonts:
+    - family: CustomFont
+      fonts:
+        - asset: assets/fonts/CustomFont.ttf
+          weight: 500
+''');
+
+      final font = File('${tempDir.path}/assets/fonts/CustomFont.ttf')
+        ..createSync(recursive: true);
+      font.writeAsStringSync('font');
+
+      final logo = File('${tempDir.path}/assets/images/app_logo.png')
+        ..createSync(recursive: true);
+      logo.writeAsStringSync('logo');
+
+      // Only app_logo.png is used
+      final codeFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync("const logo = 'assets/images/app_logo.png';");
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(report.unusedAssets.length, equals(1));
+      expect(report.unusedAssets.first.path.replaceAll(r'\', '/'),
+          contains('CustomFont.ttf'));
+
+      final cleaner = AssetCleaner(workspaceRoot: tempDir);
+      final cleanResult = cleaner.clean(unusedAssets: report.unusedAssets);
+
+      expect(cleanResult.deletedFilesCount, equals(1));
+      expect(font.existsSync(), isFalse);
+      expect(logo.existsSync(), isTrue);
+
+      final pubspecContent = rootPubspec.readAsStringSync();
+      // Must keep logo in assets
+      expect(pubspecContent, contains('assets/images/app_logo.png'));
+      // Must remove font from assets:
+      expect(pubspecContent, isNot(contains('assets/fonts/CustomFont.ttf')));
+      // Must remove fonts: and CustomFont family completely
+      expect(pubspecContent, isNot(contains('fonts:')));
+      expect(pubspecContent, isNot(contains('family: CustomFont')));
+      expect(pubspecContent, isNot(contains('weight: 500')));
+    });
   });
 }
