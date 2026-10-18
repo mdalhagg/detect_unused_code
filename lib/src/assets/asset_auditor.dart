@@ -325,7 +325,7 @@ class AssetAuditor {
   bool _isFontUsed(File file, PackageDescriptor ownerPkg, String codeCorpus) {
     final fileName = file.uri.pathSegments.safeLast ?? '';
 
-    // Check if filename is directly referenced
+    // Check if filename is directly referenced (e.g. 'assets/fonts/Cairo.ttf' or 'Cairo.ttf')
     if (codeCorpus.contains(fileName)) return true;
 
     // Check if any declared font family containing this asset is referenced in code
@@ -337,8 +337,9 @@ class AssetAuditor {
       final assets = entry.value;
 
       if (assets.any((a) => a.replaceAll(r'\', '/') == normPath)) {
-        // If the font family name is referenced in Dart code (e.g. fontFamily: 'MyFont')
-        if (codeCorpus.contains(family)) {
+        // If the font family name is referenced as a string literal in Dart code (e.g. fontFamily: 'MyFont' or "MyFont")
+        final familyPattern = RegExp('[\'"]${RegExp.escape(family)}[\'"]');
+        if (familyPattern.hasMatch(codeCorpus)) {
           return true;
         }
       }
@@ -360,11 +361,19 @@ class AssetAuditor {
     return '$first$rest';
   }
 
-  /// Checks if a file path was explicitly declared by full path in pubspec.yaml.
+  /// Checks if a file path was explicitly declared by full path in pubspec.yaml (assets or fonts).
   bool _isExplicitlyDeclared(String relPackage, PackageDescriptor pkg) {
     final norm = relPackage.replaceAll(r'\', '/');
-    return pkg.declaredAssetPatterns
-        .any((pat) => pat.replaceAll(r'\', '/') == norm);
+    if (pkg.declaredAssetPatterns
+        .any((pat) => pat.replaceAll(r'\', '/') == norm)) {
+      return true;
+    }
+    for (final fontList in pkg.declaredFonts.values) {
+      if (fontList.any((f) => f.replaceAll(r'\', '/') == norm)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

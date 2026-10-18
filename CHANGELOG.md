@@ -1,3 +1,13 @@
+## 3.3.1
+
+- **Surgical Font Assets & Pubspec Pruning:**
+  - `AssetAuditor` now explicitly recognizes font assets declared under `flutter -> fonts` in `pubspec.yaml`.
+  - Improved `_isFontUsed` to accurately match font families as quoted string literals in Dart code (e.g. `fontFamily: 'Cairo'`), preventing false positives when filenames share substrings with family names.
+  - `AssetCleaner` now surgically prunes unused font declarations (`- asset: ...`) along with their child properties (`weight`, `style`, comments) from `pubspec.yaml`.
+  - Automatically prunes empty `- family:` blocks when all their font assets are removed.
+  - Automatically prunes the `fonts:` section when all families are removed, preventing invalid YAML mapping issues.
+  - Automatically prunes empty directory patterns under `assets:` (e.g. `- assets/fonts/`) when all assets inside the directory are purged.
+
 ## 3.3.0
 
 - **AI Agent Optimization (LLMO / GEO Standard Compliance):**
