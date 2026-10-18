@@ -337,8 +337,7 @@ class AssetCleaner {
             }
           }
 
-          final hasItems =
-              keptAssetLines.any((l) => l.trim().startsWith('-'));
+          final hasItems = keptAssetLines.any((l) => l.trim().startsWith('-'));
           if (hasItems) {
             newLines.add(assetsHeaderLine);
             newLines.addAll(keptAssetLines);
