@@ -1,2 +1,2 @@
 /// Current version of the detect_unused_code package.
-const String packageVersion = '3.3.1';
+const String packageVersion = '3.3.2';

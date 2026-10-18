@@ -415,5 +415,109 @@ flutter:
       expect(pubspecContent, isNot(contains('family: CustomFont')));
       expect(pubspecContent, isNot(contains('weight: 500')));
     });
+
+    test(
+        'Audit assets: correctly recognizes dynamic modular i18n translation files and snake_case module names',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: i18n_test_app
+flutter:
+  assets:
+    - assets/i18n/ar/
+    - assets/i18n/en/
+''');
+
+      // Create i18n files for ar and en
+      final arCommon = File('${tempDir.path}/assets/i18n/ar/common.json')
+        ..createSync(recursive: true);
+      arCommon.writeAsStringSync('{"title": "عام"}');
+
+      final enCommon = File('${tempDir.path}/assets/i18n/en/common.json')
+        ..createSync(recursive: true);
+      enCommon.writeAsStringSync('{"title": "Common"}');
+
+      // snake_case module: api_responses.json
+      final arApiResponses =
+          File('${tempDir.path}/assets/i18n/ar/api_responses.json')
+            ..createSync(recursive: true);
+      arApiResponses.writeAsStringSync('{"success": "نجاح"}');
+
+      final enApiResponses =
+          File('${tempDir.path}/assets/i18n/en/api_responses.json')
+            ..createSync(recursive: true);
+      enApiResponses.writeAsStringSync('{"success": "Success"}');
+
+      // Orphaned / truly unused module
+      final arOrphaned =
+          File('${tempDir.path}/assets/i18n/ar/orphaned_module.json')
+            ..createSync(recursive: true);
+      arOrphaned.writeAsStringSync('{"dead": "متروك"}');
+
+      final enOrphaned =
+          File('${tempDir.path}/assets/i18n/en/orphaned_module.json')
+            ..createSync(recursive: true);
+      enOrphaned.writeAsStringSync('{"dead": "Dead"}');
+
+      // Dart code dynamically loads modules listed in moduleFiles
+      final codeFile = File('${tempDir.path}/lib/app_i18n.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync('''
+class AppI18n {
+  static final List<String> moduleFiles = [
+    'common',
+    'api_responses',
+  ];
+
+  Future<void> load(String langCode) async {
+    for (final fileName in moduleFiles) {
+      final path = 'assets/i18n/\$langCode/\$fileName.json';
+    }
+  }
+}
+''');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(report.totalScannedAssets, equals(6));
+      // Only orphaned_module.json (ar & en) should be unused!
+      // common.json and api_responses.json in both ar and en MUST be recognized as used
+      expect(report.unusedAssets.length, equals(2));
+      final unusedPaths =
+          report.unusedAssets.map((a) => a.path.replaceAll(r'\', '/')).toList();
+      expect(
+          unusedPaths.every((p) => p.contains('orphaned_module.json')), isTrue);
+      expect(unusedPaths.any((p) => p.contains('api_responses.json')), isFalse);
+      expect(unusedPaths.any((p) => p.contains('common.json')), isFalse);
+    });
+
+    test('Audit assets: supports PascalCase code generators', () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: pascal_test_app
+flutter:
+  assets:
+    - assets/icons/
+''');
+
+      final icon = File('${tempDir.path}/assets/icons/user_profile.png')
+        ..createSync(recursive: true);
+      icon.writeAsStringSync('icon');
+
+      final codeFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      codeFile.writeAsStringSync('''
+class AppIcons {
+  static const image = AppIcons.UserProfile;
+}
+''');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(report.totalScannedAssets, equals(1));
+      expect(report.unusedAssets.isEmpty, isTrue);
+    });
   });
 }

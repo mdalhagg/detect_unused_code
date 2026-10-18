@@ -307,10 +307,29 @@ class AssetAuditor {
     final crossPkgRef = 'packages/${ownerPkg.name}/$normRel';
     if (codeCorpus.contains(crossPkgRef)) return true;
 
-    // 4. Code generator identifiers (flutter_gen / spider)
+    // Check if asset is part of an internationalization / translation structure
+    final isI18n = _isI18nAsset(normRel);
+
+    // 4. Quoted asset name literal (e.g. 'api_responses', "api_responses", 'common', 'en')
+    // Crucial for modular i18n loaders ('assets/i18n/$langCode/$fileName.json') and dynamic asset maps
+    final minLiteralLength = isI18n ? 2 : 3;
+    if (nameWithoutExt.length >= minLiteralLength) {
+      final quotedPattern =
+          RegExp('[\'"]${RegExp.escape(nameWithoutExt)}[\'"]');
+      if (quotedPattern.hasMatch(codeCorpus)) return true;
+    }
+
+    // 5. Raw identifier or snake_case reference with word boundaries (e.g. \bapi_responses\b)
+    if (nameWithoutExt.length >= 3 &&
+        RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(nameWithoutExt)) {
+      final idPattern = RegExp('\\b${RegExp.escape(nameWithoutExt)}\\b');
+      if (idPattern.hasMatch(codeCorpus)) return true;
+    }
+
+    // 6. Code generator identifiers (flutter_gen / spider)
     // Converts snake_case or kebab-case (e.g. 'ic_user_avatar.png') to camelCase 'icUserAvatar'
     final camelCase = _toCamelCase(nameWithoutExt);
-    if (camelCase.length >= 3) {
+    if (camelCase.length >= 3 && camelCase != nameWithoutExt) {
       // Must match as an identifier boundary in Dart
       final idPattern = RegExp('\\b$camelCase\\b');
       if (idPattern.hasMatch(codeCorpus)) {
@@ -318,7 +337,31 @@ class AssetAuditor {
       }
     }
 
+    // 7. PascalCase identifier check for uppercase asset constant generators (e.g. 'IcUserAvatar')
+    if (camelCase.length >= 3) {
+      final pascalCase =
+          '${camelCase[0].toUpperCase()}${camelCase.substring(1)}';
+      if (pascalCase != camelCase && pascalCase != nameWithoutExt) {
+        final pascalPattern = RegExp('\\b$pascalCase\\b');
+        if (pascalPattern.hasMatch(codeCorpus)) {
+          return true;
+        }
+      }
+    }
+
     return false;
+  }
+
+  /// Checks whether an asset relative path belongs to a known localization / internationalization directory.
+  bool _isI18nAsset(String normRel) {
+    final lower = normRel.toLowerCase();
+    return lower.contains('/i18n/') ||
+        lower.contains('/l10n/') ||
+        lower.contains('/translations/') ||
+        lower.contains('/languages/') ||
+        lower.contains('/lang/') ||
+        lower.contains('/locales/') ||
+        lower.contains('/locale/');
   }
 
   /// Checks if a font file is used via its declared fontFamily or filename.
