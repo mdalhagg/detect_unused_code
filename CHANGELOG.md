@@ -1,3 +1,11 @@
+## 3.4.1
+
+- **String-Literal-Aware Comment Parsing (Zero False Positives):**
+  - Upgraded the dead comment detector in `UnusedCodeAuditor` to be fully string-literal aware.
+  - The line scanner now accurately tracks single-line strings (`'...'`, `"..."`), raw strings (`r'...'`, `r"..."`), and multi-line triple-quoted strings (`'''...'''`, `"""..."""`).
+  - Comment delimiters (`/*`, `*/`, `//`) contained inside string literals (such as `trimmed.startsWith('/*')` or CLI glob documentation `"test/mocks/*"`) are no longer erroneously treated as active block comments.
+  - Eliminates false positive detections of dead commented code blocks and heavy comment ratios in active code files.
+
 ## 3.4.0
 
 - **Configurable `dev_dependencies` Auditing & Interactive Prompt:**
