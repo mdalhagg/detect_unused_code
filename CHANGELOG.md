@@ -1,3 +1,18 @@
+## 3.4.0
+
+- **Configurable `dev_dependencies` Auditing & Interactive Prompt:**
+  - Added an interactive yellow prompt (`⚠️  Do you want to ignore dev-dependencies? (y/n) [Default: y]:`) when running dependency audits and cleanup interactively.
+  - Selecting `y` completely excludes `dev_dependencies` from being audited, reported as unused, or deleted.
+- **Interactive TUI Dashboard Command `[I]` (Live Toggle):**
+  - Added live toggle command `[I] Ignore Dev: ON/OFF` to the Interactive Control Dashboard.
+  - Allows developers to switch between including and excluding `dev_dependencies` on the fly, immediately refreshing the Unused Packages category count.
+- **CLI Flags for CI/CD & Script Automation:**
+  - Added `--ignore-dev-dependencies` (aliases: `--skip-dev-deps`, `--ignore-dev-deps`) to suppress the prompt and ignore dev dependencies automatically.
+  - Added `--include-dev-dependencies` to force auditing of dev dependencies.
+- **Smart `analysis_options.yaml` & Tooling Inspection:**
+  - `DependencyAuditor` now automatically inspects `analysis_options.yaml` in package directories and workspace roots for included linter rulesets (e.g. `package:saropa_lints/flutter.yaml`) and analyzer plugins (`plugins: - custom_lint`), preventing false positives for linters and dev tools.
+  - Added `saropa_lints` to standard known tool and builder packages.
+
 ## 3.3.2
 
 - **Modular i18n & Localization Dynamic Resolution:**

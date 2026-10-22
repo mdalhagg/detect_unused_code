@@ -55,7 +55,19 @@ class CliRunner {
 
     final projectRoot = findProjectOrWorkspaceRoot(startDir);
 
-    // 1. Backups listing
+    final hasIgnoreDevFlag = args.contains('--ignore-dev-dependencies') ||
+        args.contains('--skip-dev-deps') ||
+        args.contains('--ignore-dev-deps');
+    final hasIncludeDevFlag = args.contains('--include-dev-dependencies') ||
+        args.contains('--no-ignore-dev-dependencies');
+
+    bool? explicitIgnoreDev;
+    if (hasIgnoreDevFlag) {
+      explicitIgnoreDev = true;
+    } else if (hasIncludeDevFlag) {
+      explicitIgnoreDev = false;
+    }
+
     // 1. Backups listing
     if (args.contains('--backups') || args.contains('--list-backups')) {
       return _listBackups(projectRoot);
@@ -87,7 +99,8 @@ class CliRunner {
         args.any(
             (a) => a.startsWith('--markdown=') || a.startsWith('--report-md='));
     if (isMarkdown) {
-      return _runMarkdownReport(projectRoot, targetArg);
+      return _runMarkdownReport(projectRoot, targetArg,
+          explicitIgnoreDev: explicitIgnoreDev);
     }
 
     // 3. Restore specific backup by ID
@@ -164,8 +177,12 @@ class CliRunner {
           }
         }
       }
-      return _runPackagesAudit(projectRoot,
-          isJson: isJson, jsonFileName: jsonFileName);
+      return _runPackagesAudit(
+        projectRoot,
+        isJson: isJson,
+        jsonFileName: jsonFileName,
+        explicitIgnoreDev: explicitIgnoreDev,
+      );
     }
 
     // 6. Cleanup flags
@@ -205,8 +222,13 @@ class CliRunner {
     }
 
     if (cleanPackages && !cleanAll) {
-      return _runPackagesCleanup(projectRoot,
-          dryRun: dryRun, isYes: isYes, noBackup: noBackup);
+      return _runPackagesCleanup(
+        projectRoot,
+        dryRun: dryRun,
+        isYes: isYes,
+        noBackup: noBackup,
+        explicitIgnoreDev: explicitIgnoreDev,
+      );
     }
 
     int commentThreshold = 60;
@@ -255,6 +277,7 @@ class CliRunner {
         cleanDeadCode: cleanDeadCode,
         cleanAssets: cleanAssets,
         cleanPackages: cleanPackages,
+        ignoreDevDependencies: explicitIgnoreDev ?? false,
         dryRun: dryRun,
         isYes: isYes,
         noBackup: noBackup,
@@ -283,11 +306,13 @@ class CliRunner {
     if (shouldLaunchTui) {
       final tui = InteractiveTui(
         projectRoot: projectRoot,
+        explicitIgnoreDev: explicitIgnoreDev,
         options: AuditorOptions(
           targetPath: targetArg,
           commentThreshold: commentThreshold,
           minBlockLines: minBlockLines,
           verbose: verbose,
+          ignoreDevDependencies: explicitIgnoreDev ?? false,
         ),
       );
       tui.start();
@@ -672,6 +697,7 @@ class CliRunner {
     Directory projectRoot, {
     bool isJson = false,
     String jsonFileName = 'detect_unused_packages.json',
+    bool? explicitIgnoreDev,
   }) {
     print(
         '================================================================================');
@@ -679,7 +705,20 @@ class CliRunner {
     print(
         '================================================================================');
 
-    final auditor = DependencyAuditor(workspaceRoot: projectRoot);
+    bool shouldIgnoreDev = false;
+    if (explicitIgnoreDev != null) {
+      shouldIgnoreDev = explicitIgnoreDev;
+    } else if (!isJson && stdin.hasTerminal) {
+      stdout.write(
+          '\x1B[33m⚠️  Do you want to ignore dev-dependencies? (y/n) [Default: y]: \x1B[0m');
+      final ans = stdin.readLineSync()?.trim().toLowerCase() ?? '';
+      shouldIgnoreDev = (ans != 'n' && ans != 'no');
+    }
+
+    final auditor = DependencyAuditor(
+      workspaceRoot: projectRoot,
+      ignoreDevDependencies: shouldIgnoreDev,
+    );
     final report = auditor.run(onProgress: (p, msg) {
       stdout.write('\r⏳ Auditing Dependencies: [$p%] $msg   ');
     });
@@ -732,6 +771,7 @@ class CliRunner {
     bool dryRun = false,
     bool isYes = false,
     bool noBackup = false,
+    bool? explicitIgnoreDev,
   }) {
     print(
         '================================================================================');
@@ -739,7 +779,20 @@ class CliRunner {
     print(
         '================================================================================');
 
-    final auditor = DependencyAuditor(workspaceRoot: projectRoot);
+    bool shouldIgnoreDev = false;
+    if (explicitIgnoreDev != null) {
+      shouldIgnoreDev = explicitIgnoreDev;
+    } else if (!isYes && stdin.hasTerminal) {
+      stdout.write(
+          '\x1B[33m⚠️  Do you want to ignore dev-dependencies? (y/n) [Default: y]: \x1B[0m');
+      final ans = stdin.readLineSync()?.trim().toLowerCase() ?? '';
+      shouldIgnoreDev = (ans != 'n' && ans != 'no');
+    }
+
+    final auditor = DependencyAuditor(
+      workspaceRoot: projectRoot,
+      ignoreDevDependencies: shouldIgnoreDev,
+    );
     final report = auditor.run(onProgress: (p, msg) {
       stdout.write('\r⏳ Auditing Dependencies: [$p%] $msg   ');
     });
@@ -801,7 +854,11 @@ class CliRunner {
     return 0;
   }
 
-  int _runMarkdownReport(Directory projectRoot, String? targetArg) {
+  int _runMarkdownReport(
+    Directory projectRoot,
+    String? targetArg, {
+    bool? explicitIgnoreDev,
+  }) {
     String mdFileName = 'detect_unused_report.md';
     bool toStdout = args.contains('--stdout');
 
@@ -835,7 +892,10 @@ class CliRunner {
     );
     final report = auditor.run();
 
-    final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
+    final depAuditor = DependencyAuditor(
+      workspaceRoot: projectRoot,
+      ignoreDevDependencies: explicitIgnoreDev ?? false,
+    );
     final depReport = depAuditor.run();
 
     final assetAuditor = AssetAuditor(workspaceRoot: projectRoot);
@@ -884,6 +944,7 @@ class CliRunner {
     required bool cleanDeadCode,
     bool cleanAssets = false,
     bool cleanPackages = false,
+    bool ignoreDevDependencies = false,
     required bool dryRun,
     required bool isYes,
     required bool noBackup,
@@ -905,6 +966,7 @@ class CliRunner {
       cleanDeadCode: cleanDeadCode,
       cleanAssets: cleanAssets,
       cleanPackages: cleanPackages,
+      ignoreDevDependencies: ignoreDevDependencies,
       dryRun: dryRun,
       isYes: isYes,
       noBackup: noBackup,
@@ -1243,6 +1305,11 @@ BACKUP & ROLLBACK:
 ANALYSIS FILTER FLAGS:
   --packages,              Scan and report unused and duplicate external dependencies across
   --audit-packages         all discovered pubspec.yaml files in the workspace.
+
+  --ignore-dev-dependencies  Ignore dev_dependencies during dependency audit and cleanup
+  --skip-dev-deps,           (prevents false positives from linters, builders, and tooling).
+  --ignore-dev-deps
+  --include-dev-dependencies Include dev_dependencies in dependency audit and cleanup.
 
   --assets,                Scan and report only unused assets, images, and fonts across
   --audit-assets           all discovered pubspec.yaml packages in the workspace.

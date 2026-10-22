@@ -469,6 +469,9 @@ class AuditorOptions {
   /// Custom glob patterns or suffixes to exclude from being audited.
   final List<String> customExcludes;
 
+  /// Whether to ignore/skip dev_dependencies during dependency audits.
+  final bool ignoreDevDependencies;
+
   /// Creates a new [AuditorOptions] configuration.
   const AuditorOptions({
     this.targetPath,
@@ -483,5 +486,6 @@ class AuditorOptions {
     this.excludeGenerated = true,
     this.protectDiClasses = true,
     this.customExcludes = const [],
+    this.ignoreDevDependencies = false,
   });
 }

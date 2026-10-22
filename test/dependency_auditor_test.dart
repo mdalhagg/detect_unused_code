@@ -174,5 +174,85 @@ void main() {}
       expect(updatedLines.any((l) => l.contains('keep_me: ^1.0.0')), isTrue);
       expect(updatedLines.any((l) => l.contains('also_keep: ^3.0.0')), isTrue);
     });
+
+    test(
+        'DependencyAuditor: ignores dev_dependencies when ignoreDevDependencies is true',
+        () {
+      final pubFile = File('${tempDir.path}/pubspec.yaml');
+      pubFile.writeAsStringSync('''
+name: ignore_dev_test
+dependencies:
+  used_dep: ^1.0.0
+  unused_dep: ^1.0.0
+dev_dependencies:
+  unused_dev_dep: ^1.0.0
+''');
+
+      final dartFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      dartFile.writeAsStringSync('''
+import 'package:used_dep/used_dep.dart';
+void main() {}
+''');
+
+      // 1. Audit without ignoreDevDependencies -> finds unused_dep AND unused_dev_dep
+      final auditorNormal = DependencyAuditor(
+        workspaceRoot: tempDir,
+        ignoreDevDependencies: false,
+      );
+      final reportNormal = auditorNormal.run();
+      expect(reportNormal.issues.length, equals(2));
+      final namesNormal =
+          reportNormal.issues.map((i) => i.packageName).toList();
+      expect(namesNormal, contains('unused_dep'));
+      expect(namesNormal, contains('unused_dev_dep'));
+
+      // 2. Audit WITH ignoreDevDependencies -> only finds unused_dep, skips unused_dev_dep completely!
+      final auditorIgnored = DependencyAuditor(
+        workspaceRoot: tempDir,
+        ignoreDevDependencies: true,
+      );
+      final reportIgnored = auditorIgnored.run();
+      expect(reportIgnored.issues.length, equals(1));
+      expect(reportIgnored.issues.first.packageName, equals('unused_dep'));
+    });
+
+    test(
+        'DependencyAuditor: recognizes linter and plugin packages declared in analysis_options.yaml (e.g. saropa_lints)',
+        () {
+      final pubFile = File('${tempDir.path}/pubspec.yaml');
+      pubFile.writeAsStringSync('''
+name: analysis_options_test
+dev_dependencies:
+  saropa_lints: ^5.0.0
+  custom_lint: ^0.7.0
+  dead_dev_tool: ^1.0.0
+''');
+
+      // analysis_options.yaml includes saropa_lints and registers custom_lint
+      final analysisFile = File('${tempDir.path}/analysis_options.yaml');
+      analysisFile.writeAsStringSync('''
+include: package:saropa_lints/flutter.yaml
+
+analyzer:
+  plugins:
+    - custom_lint
+''');
+
+      final dartFile = File('${tempDir.path}/lib/main.dart')
+        ..createSync(recursive: true);
+      dartFile.writeAsStringSync('void main() {}');
+
+      final auditor = DependencyAuditor(
+        workspaceRoot: tempDir,
+        ignoreDevDependencies: false,
+      );
+      final report = auditor.run();
+
+      // saropa_lints and custom_lint should be recognized as used!
+      // Only dead_dev_tool should be flagged as unused
+      expect(report.issues.length, equals(1));
+      expect(report.issues.first.packageName, equals('dead_dev_tool'));
+    });
   });
 }
