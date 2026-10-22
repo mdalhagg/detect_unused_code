@@ -105,6 +105,9 @@ class StagedCleanupRunner {
   /// Whether to clean unused and duplicate package dependencies in pubspec.yaml.
   final bool cleanPackages;
 
+  /// Whether to ignore/skip dev_dependencies during cleanup.
+  final bool ignoreDevDependencies;
+
   /// Simulation mode without disk modifications.
   final bool dryRun;
 
@@ -134,6 +137,7 @@ class StagedCleanupRunner {
     this.cleanDeadCode = false,
     this.cleanAssets = false,
     this.cleanPackages = false,
+    this.ignoreDevDependencies = false,
     this.dryRun = false,
     this.isYes = false,
     this.noBackup = false,
@@ -173,7 +177,10 @@ class StagedCleanupRunner {
 
     PackageDependenciesReport? initialDepReport;
     if (cleanAll || cleanPackages) {
-      final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
+      final depAuditor = DependencyAuditor(
+        workspaceRoot: projectRoot,
+        ignoreDevDependencies: ignoreDevDependencies,
+      );
       initialDepReport = depAuditor.run();
     }
 
@@ -725,7 +732,10 @@ class StagedCleanupRunner {
       print(
           '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
+      final depAuditor = DependencyAuditor(
+        workspaceRoot: projectRoot,
+        ignoreDevDependencies: ignoreDevDependencies,
+      );
       final depReport = depAuditor.run();
 
       if (depReport.issues.isEmpty) {

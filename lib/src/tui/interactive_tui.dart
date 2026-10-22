@@ -21,11 +21,17 @@ class InteractiveTui {
   /// Audit options.
   final AuditorOptions options;
 
+  final bool? _explicitIgnoreDev;
+  bool _ignoreDevDependencies;
+
   /// Creates a new [InteractiveTui] instance.
   InteractiveTui({
     required this.projectRoot,
     this.options = const AuditorOptions(),
-  });
+    bool? explicitIgnoreDev,
+  })  : _explicitIgnoreDev = explicitIgnoreDev,
+        _ignoreDevDependencies =
+            explicitIgnoreDev ?? options.ignoreDevDependencies;
 
   // Selected categories map
   final Map<int, bool> _selected = {
@@ -60,7 +66,10 @@ class InteractiveTui {
     });
     stdout.writeln();
 
-    final depAuditor = DependencyAuditor(workspaceRoot: projectRoot);
+    final depAuditor = DependencyAuditor(
+      workspaceRoot: projectRoot,
+      ignoreDevDependencies: _ignoreDevDependencies,
+    );
     final depReport = depAuditor.run(onProgress: (percent, msg) {
       _renderProgress(percent, '2/3 Packages', msg);
     });
@@ -77,6 +86,18 @@ class InteractiveTui {
 
   /// Starts the interactive session loop.
   void start() {
+    // If not explicitly set via CLI flags and running interactively, prompt the user
+    if (_explicitIgnoreDev == null && stdin.hasTerminal) {
+      stdout.write(
+          '\x1B[33m⚠️  Do you want to ignore dev-dependencies? (y/n) [Default: y]: \x1B[0m');
+      final ans = stdin.readLineSync()?.trim().toLowerCase() ?? '';
+      if (ans == 'n' || ans == 'no') {
+        _ignoreDevDependencies = false;
+      } else {
+        _ignoreDevDependencies = true;
+      }
+    }
+
     var bundle = _runFullAudit(label: 'Initializing');
     var report = bundle.report;
     var depReport = bundle.depReport;
@@ -101,6 +122,22 @@ class InteractiveTui {
       }
 
       switch (input) {
+        case 'I':
+          _ignoreDevDependencies = !_ignoreDevDependencies;
+          stdout.writeln(
+            _ignoreDevDependencies
+                ? '\n💡 Ignore dev_dependencies is now ON (dev_dependencies excluded).'
+                : '\n💡 Ignore dev_dependencies is now OFF (dev_dependencies included).',
+          );
+          final depAuditor = DependencyAuditor(
+            workspaceRoot: projectRoot,
+            ignoreDevDependencies: _ignoreDevDependencies,
+          );
+          depReport = depAuditor.run(onProgress: (percent, msg) {
+            _renderProgress(percent, 'Packages', msg);
+          });
+          stdout.writeln();
+          break;
         case 'A':
           final allOn = _selected.values.every((v) => v);
           for (final k in _selected.keys) {
@@ -253,8 +290,10 @@ class InteractiveTui {
         '│  [1-8] Toggle category     [A] Toggle All        [V] View details      │');
     stdout.writeln(
         '│  [D] Preview (Dry Run)     [C] Clean Selected    [U] Undo last action  │');
-    stdout.writeln(
-        '│  [M] Export Markdown       [Q] Quit                                    │');
+    final devStatus = _ignoreDevDependencies ? 'ON' : 'OFF';
+    final cmdLine =
+        '│  [I] Ignore Dev: ${devStatus.padRight(3)}       [M] Export Markdown   [Q] Quit';
+    stdout.writeln('${cmdLine.padRight(73)}│');
     stdout.writeln(
         '└────────────────────────────────────────────────────────────────────────┘');
   }
@@ -365,6 +404,7 @@ class InteractiveTui {
       cleanTodos: _selected[6] == true,
       cleanUnusedImports: _selected[7] == true,
       cleanDeadCode: _selected[8] == true,
+      ignoreDevDependencies: _ignoreDevDependencies,
       dryRun: dryRun,
       isYes: true, // User triggered action directly from the interactive menu
       noBackup: false,

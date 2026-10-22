@@ -29,6 +29,7 @@ class DependencyAuditor {
     'custom_lint',
     'very_good_analysis',
     'dart_code_metrics',
+    'saropa_lints',
     // Build & Code generators
     'build_runner',
     'build_web_compilers',
@@ -50,12 +51,21 @@ class DependencyAuditor {
     'integration_test',
   };
 
+  /// Whether to ignore/skip dev_dependencies during the dependency audit.
+  final bool ignoreDevDependencies;
+
   /// Creates a new [DependencyAuditor].
-  DependencyAuditor({Directory? workspaceRoot})
-      : workspaceRoot = workspaceRoot ?? findProjectOrWorkspaceRoot();
+  DependencyAuditor({
+    Directory? workspaceRoot,
+    this.ignoreDevDependencies = false,
+  }) : workspaceRoot = workspaceRoot ?? findProjectOrWorkspaceRoot();
 
   /// Runs the full dependency audit across all `pubspec.yaml` files found in the workspace.
-  PackageDependenciesReport run({DepProgressCallback? onProgress}) {
+  PackageDependenciesReport run({
+    DepProgressCallback? onProgress,
+    bool? ignoreDevDependencies,
+  }) {
+    final shouldIgnoreDev = ignoreDevDependencies ?? this.ignoreDevDependencies;
     onProgress?.call(5, 'Discovering pubspec.yaml files across workspace...');
     final pubspecFiles = PubspecScanner.discoverPubspecFiles(workspaceRoot);
 
@@ -100,10 +110,13 @@ class DependencyAuditor {
       // 4. Inspect build.yaml in this package for builder registrations
       final buildYamlPackages = _extractBuildYamlPackages(pkgDir);
 
-      // 5. Inspect executables in this pubspec.yaml
+      // 5. Inspect analysis_options.yaml for linter and plugin registrations
+      final analysisOptionsPackages = _extractAnalysisOptionsPackages(pkgDir);
+
+      // 6. Inspect executables in this pubspec.yaml
       final executablePackages = _extractExecutablePackages(pubFile);
 
-      // 6. Audit each non-duplicate declared dependency
+      // 7. Audit each non-duplicate declared dependency
       final seenPackagesInThisPubspec = <String>{};
 
       for (final dep in declaredList) {
@@ -111,6 +124,11 @@ class DependencyAuditor {
 
         // Skip if already flagged as duplicate
         if (!seenPackagesInThisPubspec.add('${dep.scope.name}:$pkgName')) {
+          continue;
+        }
+
+        // Skip dev_dependencies if ignoreDevDependencies is enabled
+        if (shouldIgnoreDev && dep.scope == DependencyScope.dev) {
           continue;
         }
 
@@ -125,6 +143,7 @@ class DependencyAuditor {
         }
 
         if (buildYamlPackages.contains(pkgName) ||
+            analysisOptionsPackages.contains(pkgName) ||
             executablePackages.contains(pkgName)) {
           continue;
         }
@@ -451,6 +470,39 @@ class DependencyAuditor {
       }
     } catch (_) {}
 
+    return pkgs;
+  }
+
+  /// Inspects analysis_options.yaml in the package directory or workspace root for referenced linter and plugin packages.
+  Set<String> _extractAnalysisOptionsPackages(Directory pkgDir) {
+    final candidatePaths = {
+      '${pkgDir.path}/analysis_options.yaml',
+      '${workspaceRoot.path}/analysis_options.yaml',
+    };
+
+    final pkgs = <String>{};
+    for (final path in candidatePaths) {
+      final file = File(path);
+      if (!file.existsSync()) continue;
+      try {
+        final content = file.readAsStringSync();
+        // 1. Matches includes like: include: package:saropa_lints/flutter.yaml or package:lints/core.yaml
+        final includeRegex = RegExp(r'''package:([a-zA-Z0-9_-]+)/''');
+        for (final m in includeRegex.allMatches(content)) {
+          final p = m.group(1);
+          if (p != null && p.isNotEmpty) pkgs.add(p);
+        }
+        // 2. Matches analyzer plugins like:
+        //    plugins:
+        //      - custom_lint
+        final pluginRegex =
+            RegExp(r'''^\s*-\s*([a-zA-Z0-9_-]+)\s*$''', multiLine: true);
+        for (final m in pluginRegex.allMatches(content)) {
+          final p = m.group(1);
+          if (p != null && p.isNotEmpty) pkgs.add(p);
+        }
+      } catch (_) {}
+    }
     return pkgs;
   }
 }

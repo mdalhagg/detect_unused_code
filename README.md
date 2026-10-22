@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.3.0
+  detect_unused_code: ^3.4.0
 ```
 
 ---
@@ -237,12 +237,19 @@ detect_unused --json
 detect_unused --json=audit_report.json
 
 # Show code snippets for detected dead blocks
+# Show code snippets for detected dead blocks
 detect_unused -v
+
+# Ignore dev_dependencies during dependency audit and cleanup (prevents false positives from linters/tooling)
+detect_unused --packages --ignore-dev-dependencies
+
+# Or using aliases
+detect_unused --packages --skip-dev-deps
 ```
 
 ---
 
-## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0)
+## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.4.0)
 
 While running `detect_unused` launches the interactive dashboard automatically, you can also control or automate it directly via CLI flags:
 
@@ -258,6 +265,9 @@ detect_unused --scan
 
 # Launch dashboard with explicit flag:
 detect_unused --interactive
+
+# Toggle ignore dev_dependencies live inside dashboard:
+# Press [I] to switch between Ignore Dev: ON and OFF on the fly!
 
 # Instant single-step rollback of the latest cleanup snapshot:
 detect_unused --undo

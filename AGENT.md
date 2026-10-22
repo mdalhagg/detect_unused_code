@@ -57,6 +57,7 @@ detect_unused --undo
 | **Execute full 9-stage cleanup** | `detect_unused --clean-all -y` |
 | **Clean only unused assets & fonts** | `detect_unused --clean-assets -y` |
 | **Clean only unused & duplicate packages** | `detect_unused --clean-packages -y` |
+| **Audit dependencies ignoring dev_dependencies** | `detect_unused --packages --ignore-dev-dependencies` |
 | **Clean only dead classes & widgets** | `detect_unused --clean-dead-classes -y` |
 | **Clean only dead commented code blocks** | `detect_unused --clean-dead-blocks -y` |
 | **Delete 100% commented-out files** | `detect_unused --clean-commented-files -y` |
@@ -78,6 +79,7 @@ detect_unused --undo
 The engine has built-in guards that you should explain to users when asked:
 - **Generated Code**: Automatically ignores `*.g.dart`, `*.freezed.dart`, `*.mocks.dart`, `*.config.dart`, `*.gr.dart`, `*.gen.dart`, `*.drift.dart` during cleanup while indexing them for references so active models are not flagged as unused.
 - **Dependency Injection**: Classes decorated with `@injectable`, `@singleton`, `@lazySingleton`, `@module`, `@named`, `@factoryMethod`, `@riverpod`, `@entrypoint`, and `@pragma` are automatically protected from deletion.
+- **Dev Dependencies & Tooling**: Automatically inspects `analysis_options.yaml` (for linter rulesets like `saropa_lints` and analyzer plugins like `custom_lint`) and `build.yaml` (for builder configurations). Supports `--ignore-dev-dependencies` (or interactive dashboard toggle `[I]`) to prevent dev tooling from being flagged.
 - **Preservation Directives**:
   - Class level: Advise users to add `// @keepUnused` or `@keepUnused` above any declaration they want to retain.
   - File level: Advise users to add `// ignore_for_file: unused_code` at the top of the file.
