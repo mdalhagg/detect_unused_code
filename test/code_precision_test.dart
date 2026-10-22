@@ -225,5 +225,92 @@ class GeneratedOldDummy {}
         tempDir.deleteSync(recursive: true);
       }
     });
+
+    test(
+        'Comment auditor does not flag string literals containing comment delimiters',
+        () {
+      final tempDir =
+          Directory.systemTemp.createTempSync('comment_string_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        File('${libDir.path}/sample.dart').writeAsStringSync(r"""
+class SampleService {
+  void checkPatterns(String trimmed) {
+    final s1 = '/* not a comment */';
+    final s2 = "/* also not a comment */";
+    final s3 = r'/* raw string */';
+    final s4 = trimmed.startsWith('/*');
+    final s5 = "test/mocks/*";
+    final multiline = '''
+      line 1 with /* block */
+      line 2 with // comment
+    ''';
+    print('$s1 $s2 $s3 $s4 $s5 $multiline');
+  }
+
+  void anotherMethod() {
+    print("All this is active Dart code!");
+  }
+}
+""");
+
+        final auditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+            runClassAnalysis: false,
+            runCommentAnalysis: true,
+          ),
+        );
+        final report = auditor.run();
+
+        expect(report.filesWithCommentBlocks, isEmpty);
+        expect(report.fullyCommentedFiles, isEmpty);
+        expect(report.highRatioFiles, isEmpty);
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('Comment auditor still correctly detects real dead code blocks', () {
+      final tempDir = Directory.systemTemp.createTempSync('real_comment_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        File('${libDir.path}/sample.dart').writeAsStringSync('''
+class ActiveClass {
+  void run() {}
+}
+
+/*
+class DeadWidget extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container();
+  }
+}
+*/
+''');
+
+        final auditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            minBlockLines: 3,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+            runClassAnalysis: false,
+            runCommentAnalysis: true,
+          ),
+        );
+        final report = auditor.run();
+
+        expect(report.filesWithCommentBlocks, isNotEmpty);
+        expect(report.filesWithCommentBlocks.first.blocks, isNotEmpty);
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

@@ -178,6 +178,8 @@ class UnusedCodeAuditor {
       int totalNonEmpty = 0;
       int commentLinesCount = 0;
       bool inBlockComment = false;
+      String? multilineQuote;
+      bool multilineIsRaw = false;
       List<CommentBlockItem> currentBlock = [];
       final detectedBlocks = <CommentBlockResult>[];
 
@@ -213,36 +215,138 @@ class UnusedCodeAuditor {
               } else {
                 hasComment = true;
                 commentTextParts.add(rawLine.substring(idx));
+                idx = rawLine.length;
+                break;
+              }
+            } else if (multilineQuote != null) {
+              hasRealCode = true;
+              final quote = multilineQuote;
+              bool closed = false;
+              while (idx < rawLine.length) {
+                if (!multilineIsRaw && rawLine[idx] == r'\') {
+                  idx += 2;
+                  continue;
+                }
+                if (rawLine.startsWith(quote, idx)) {
+                  multilineQuote = null;
+                  multilineIsRaw = false;
+                  idx += quote.length;
+                  closed = true;
+                  break;
+                }
+                idx++;
+              }
+              if (!closed) {
                 break;
               }
             } else {
-              final openBlockIdx = rawLine.indexOf('/*', idx);
-              final singleLineIdx = rawLine.indexOf('//', idx);
-
-              if (singleLineIdx != -1 &&
-                  (openBlockIdx == -1 || singleLineIdx < openBlockIdx)) {
-                if (rawLine.substring(idx, singleLineIdx).trim().isNotEmpty) {
-                  hasRealCode = true;
-                }
+              if (rawLine.startsWith('//', idx)) {
                 hasComment = true;
                 final body = rawLine
-                    .substring(singleLineIdx + 2)
+                    .substring(idx + 2)
                     .replaceFirst(RegExp(r'^/?\s*'), '');
                 commentTextParts.add(body);
                 break;
-              } else if (openBlockIdx != -1) {
-                if (rawLine.substring(idx, openBlockIdx).trim().isNotEmpty) {
-                  hasRealCode = true;
-                }
+              }
+
+              if (rawLine.startsWith('/*', idx)) {
                 hasComment = true;
                 inBlockComment = true;
-                idx = openBlockIdx + 2;
-              } else {
-                if (rawLine.substring(idx).trim().isNotEmpty) {
-                  hasRealCode = true;
-                }
-                break;
+                idx += 2;
+                continue;
               }
+
+              if (rawLine.startsWith("r'''", idx)) {
+                hasRealCode = true;
+                multilineQuote = "'''";
+                multilineIsRaw = true;
+                idx += 4;
+                continue;
+              }
+              if (rawLine.startsWith('r"""', idx)) {
+                hasRealCode = true;
+                multilineQuote = '"""';
+                multilineIsRaw = true;
+                idx += 4;
+                continue;
+              }
+
+              if (rawLine.startsWith("'''", idx)) {
+                hasRealCode = true;
+                multilineQuote = "'''";
+                multilineIsRaw = false;
+                idx += 3;
+                continue;
+              }
+              if (rawLine.startsWith('"""', idx)) {
+                hasRealCode = true;
+                multilineQuote = '"""';
+                multilineIsRaw = false;
+                idx += 3;
+                continue;
+              }
+
+              if (rawLine.startsWith("r'", idx)) {
+                hasRealCode = true;
+                idx += 2;
+                final closeIdx = rawLine.indexOf("'", idx);
+                if (closeIdx != -1) {
+                  idx = closeIdx + 1;
+                } else {
+                  idx = rawLine.length;
+                }
+                continue;
+              }
+              if (rawLine.startsWith('r"', idx)) {
+                hasRealCode = true;
+                idx += 2;
+                final closeIdx = rawLine.indexOf('"', idx);
+                if (closeIdx != -1) {
+                  idx = closeIdx + 1;
+                } else {
+                  idx = rawLine.length;
+                }
+                continue;
+              }
+
+              if (rawLine[idx] == "'") {
+                hasRealCode = true;
+                idx++;
+                while (idx < rawLine.length) {
+                  if (rawLine[idx] == r'\') {
+                    idx += 2;
+                    continue;
+                  }
+                  if (rawLine[idx] == "'") {
+                    idx++;
+                    break;
+                  }
+                  idx++;
+                }
+                continue;
+              }
+              if (rawLine[idx] == '"') {
+                hasRealCode = true;
+                idx++;
+                while (idx < rawLine.length) {
+                  if (rawLine[idx] == r'\') {
+                    idx += 2;
+                    continue;
+                  }
+                  if (rawLine[idx] == '"') {
+                    idx++;
+                    break;
+                  }
+                  idx++;
+                }
+                continue;
+              }
+
+              final char = rawLine[idx];
+              if (char.trim().isNotEmpty) {
+                hasRealCode = true;
+              }
+              idx++;
             }
           }
 

@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.4.0
+  detect_unused_code: ^3.4.1
 ```
 
 ---
@@ -249,7 +249,7 @@ detect_unused --packages --skip-dev-deps
 
 ---
 
-## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.4.0)
+## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.4.1)
 
 While running `detect_unused` launches the interactive dashboard automatically, you can also control or automate it directly via CLI flags:
 
