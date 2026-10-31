@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.4.1
+  detect_unused_code: ^3.5.0
 ```
 
 ---
@@ -203,6 +203,21 @@ detect_unused --path=lib/features/checkout
 # Scan a single file
 detect_unused lib/services/payment_service.dart
 ```
+
+### ⚙️ Configuration in `pubspec.yaml` (v3.5.0+)
+
+You can configure file and directory exclusions directly in your project's `pubspec.yaml` so that code generators (like `dart_mappable` and `freezed`) or custom folders are automatically ignored during local audits and in CI/CD pipelines:
+
+```yaml
+# Add to your project's pubspec.yaml:
+detect_unused_code:
+  exclude:
+    - "*.mapper.dart"       # dart_mappable generated data classes
+    - "*.g.dart"            # json_serializable / freezed files
+    - "**/generated/**"     # intl_utils or generated localization folders
+    - "test/mocks/*"        # mock files
+```
+*(Aliases `detect_unused:` and `ignore:` are also supported).*
 
 ### Filtering & Tuning Flags
 ```bash
@@ -249,7 +264,7 @@ detect_unused --packages --skip-dev-deps
 
 ---
 
-## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.4.1)
+## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.5.0)
 
 While running `detect_unused` launches the interactive dashboard automatically, you can also control or automate it directly via CLI flags:
 

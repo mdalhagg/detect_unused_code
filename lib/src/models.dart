@@ -488,4 +488,38 @@ class AuditorOptions {
     this.customExcludes = const [],
     this.ignoreDevDependencies = false,
   });
+
+  /// Creates a copy of [AuditorOptions] with the given fields replaced.
+  AuditorOptions copyWith({
+    String? targetPath,
+    bool? runClassAnalysis,
+    bool? runCommentAnalysis,
+    bool? includeInternal,
+    bool? runTodoAnalysis,
+    bool? runDiagnostics,
+    int? commentThreshold,
+    int? minBlockLines,
+    bool? verbose,
+    bool? excludeGenerated,
+    bool? protectDiClasses,
+    List<String>? customExcludes,
+    bool? ignoreDevDependencies,
+  }) {
+    return AuditorOptions(
+      targetPath: targetPath ?? this.targetPath,
+      runClassAnalysis: runClassAnalysis ?? this.runClassAnalysis,
+      runCommentAnalysis: runCommentAnalysis ?? this.runCommentAnalysis,
+      includeInternal: includeInternal ?? this.includeInternal,
+      runTodoAnalysis: runTodoAnalysis ?? this.runTodoAnalysis,
+      runDiagnostics: runDiagnostics ?? this.runDiagnostics,
+      commentThreshold: commentThreshold ?? this.commentThreshold,
+      minBlockLines: minBlockLines ?? this.minBlockLines,
+      verbose: verbose ?? this.verbose,
+      excludeGenerated: excludeGenerated ?? this.excludeGenerated,
+      protectDiClasses: protectDiClasses ?? this.protectDiClasses,
+      customExcludes: customExcludes ?? this.customExcludes,
+      ignoreDevDependencies:
+          ignoreDevDependencies ?? this.ignoreDevDependencies,
+    );
+  }
 }

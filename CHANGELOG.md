@@ -1,3 +1,27 @@
+## 3.5.0
+
+- **Generated Classes & Data Models Protection (Zero False Positives):**
+  - Resolves [#26](https://github.com/mdalhagg/detect_unused_code/issues/26): Detecting unused classes (`--classes`) now automatically ignores generated classes and data models created by code generators.
+  - Added native detection for `*.mapper.dart` (`dart_mappable`), `*.chopper.dart` (`chopper`), `*.swagger.dart` (`swagger_dart_code_generator`), and `*.auto_mappr.dart` (`auto_mappr`).
+  - Added automatic protection for generated directories such as `generated/`, `lib/generated/`, and `lib/src/generated/` (e.g. `intl_utils` localization).
+  - Guarantees clean zero exit codes (`exit_code == 0`) in CI/CD pipelines without flagging generated data classes.
+- **Project-Level `pubspec.yaml` Configuration:**
+  - Projects can now configure file and directory exclusions directly in `pubspec.yaml` under `detect_unused_code:` (or alias `detect_unused:`):
+    ```yaml
+    detect_unused_code:
+      exclude:
+        - "*.mapper.dart"
+        - "**/generated/**"
+        - "test/mocks/*"
+    ```
+  - Both `exclude:` and `ignore:` keys are supported with automatic quotation and comment stripping.
+- **Advanced Glob Matching Engine:**
+  - Upgraded pattern matcher to fully support standard glob expressions:
+    - Double-star recursive path matching (e.g. `**/generated/**`, `lib/**/temp/*`).
+    - Extension wildcards (e.g. `*.g.dart`, `*.mapper.dart`).
+    - Substring and directory matching (e.g. `test/mocks/`).
+  - Merges `pubspec.yaml` excludes seamlessly with CLI `--exclude` arguments and programmatic options across all audit engines.
+
 ## 3.4.1
 
 - **String-Literal-Aware Comment Parsing (Zero False Positives):**

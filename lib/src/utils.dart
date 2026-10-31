@@ -528,6 +528,7 @@ extension SafeIterableExtension<T> on Iterable<T> {
 const generatedFileSuffixes = [
   '.g.dart',
   '.freezed.dart',
+  '.mapper.dart',
   '.mocks.dart',
   '.config.dart',
   '.gr.dart',
@@ -536,6 +537,9 @@ const generatedFileSuffixes = [
   '.reflectable.dart',
   '.gql.dart',
   '.route.dart',
+  '.chopper.dart',
+  '.swagger.dart',
+  '.auto_mappr.dart',
 ];
 
 /// Checks whether the given file path represents a generated Dart file.
@@ -546,27 +550,142 @@ bool isGeneratedDartFile(String path) {
       return true;
     }
   }
+  if (lower.contains('/generated/') || lower.startsWith('generated/')) {
+    return true;
+  }
   return false;
 }
 
 /// Checks if a file path matches any custom exclude pattern or substring.
+///
+/// Supports exact substrings, directory paths (e.g. `test/mocks/`),
+/// simple wildcards (e.g. `*.g.dart`), and glob expressions (e.g. `**/generated/**`, `lib/*/test.dart`).
 bool matchesCustomExclude(String path, List<String> excludes) {
   if (excludes.isEmpty) return false;
   final norm = path.replaceAll(r'\', '/').toLowerCase();
   for (final raw in excludes) {
     var pat = raw.trim().replaceAll(r'\', '/').toLowerCase();
+    if ((pat.startsWith('"') && pat.endsWith('"')) ||
+        (pat.startsWith("'") && pat.endsWith("'"))) {
+      if (pat.length >= 2) {
+        pat = pat.substring(1, pat.length - 1).trim();
+      }
+    }
     if (pat.isEmpty) continue;
-    if (pat.startsWith('*')) {
-      final suffix = pat.substring(1);
-      if (norm.endsWith(suffix)) return true;
-    } else if (pat.endsWith('*')) {
-      final prefix = pat.substring(0, pat.length - 1);
-      if (norm.contains(prefix)) return true;
+
+    if (pat.contains('*')) {
+      var regex = RegExp.escape(pat);
+      regex = regex.replaceAll(r'\*\*/', r'(?:^|.*?/)');
+      regex = regex.replaceAll(r'/\*\*', r'(?:/.*)?');
+      regex = regex.replaceAll(r'\*\*', r'.*');
+      regex = regex.replaceAll(r'\*', r'[^/]*');
+
+      if (!regex.startsWith('(?:^|.*?/)') &&
+          !regex.startsWith('^') &&
+          !regex.startsWith('/')) {
+        regex = '(?:^|/)$regex';
+      }
+      if (!regex.endsWith(r'$')) {
+        regex = '$regex\$';
+      }
+
+      try {
+        final reg = RegExp(regex, caseSensitive: false);
+        if (reg.hasMatch(norm)) return true;
+      } catch (_) {
+        if (norm.contains(pat.replaceAll('*', ''))) return true;
+      }
     } else {
       if (norm.contains(pat)) return true;
     }
   }
   return false;
+}
+
+/// Reads custom exclusion patterns from the project's `pubspec.yaml` file under
+/// `detect_unused_code:` or `detect_unused:` (keys `exclude:` or `ignore:`).
+List<String> loadPubspecExcludes(Directory projectRoot) {
+  final pubspecFile = File('${projectRoot.path}/pubspec.yaml');
+  if (!pubspecFile.existsSync()) {
+    return const [];
+  }
+
+  try {
+    final lines = pubspecFile.readAsLinesSync();
+    bool inDetectSection = false;
+    bool inExcludeSection = false;
+    int detectIndent = 0;
+    int excludeIndent = 0;
+    final excludes = <String>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      final rawLine = lines[i];
+      final trimmed = rawLine.trim();
+
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      final indent = rawLine.indexOf(rawLine.trimLeft());
+
+      if (inDetectSection) {
+        if (indent <= detectIndent && !trimmed.startsWith('-')) {
+          inDetectSection = false;
+          inExcludeSection = false;
+        }
+      }
+
+      if (!inDetectSection) {
+        if (trimmed == 'detect_unused_code:' ||
+            trimmed == 'detect_unused:' ||
+            trimmed.startsWith('detect_unused_code:') ||
+            trimmed.startsWith('detect_unused:')) {
+          inDetectSection = true;
+          detectIndent = indent;
+          inExcludeSection = false;
+        }
+        continue;
+      }
+
+      // Inside detect_unused_code section
+      if (inExcludeSection) {
+        if (indent <= excludeIndent && !trimmed.startsWith('-')) {
+          inExcludeSection = false;
+        } else if (trimmed.startsWith('-')) {
+          var item = trimmed.substring(1).trim();
+          if (item.contains('#') &&
+              !item.startsWith('"') &&
+              !item.startsWith("'")) {
+            item = item.substring(0, item.indexOf('#')).trim();
+          } else if ((item.startsWith('"') && item.contains('"')) ||
+              (item.startsWith("'") && item.contains("'"))) {
+            final quote = item[0];
+            final close = item.indexOf(quote, 1);
+            if (close != -1) {
+              item = item.substring(1, close).trim();
+            }
+          }
+          if (item.isNotEmpty && !excludes.contains(item)) {
+            excludes.add(item);
+          }
+          continue;
+        }
+      }
+
+      if (trimmed == 'exclude:' ||
+          trimmed == 'ignore:' ||
+          trimmed.startsWith('exclude:') ||
+          trimmed.startsWith('ignore:')) {
+        inExcludeSection = true;
+        excludeIndent = indent;
+        continue;
+      }
+    }
+
+    return excludes;
+  } catch (_) {
+    return const [];
+  }
 }
 
 /// Checks whether the file header contains a file-level directive to ignore unused code.

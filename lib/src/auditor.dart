@@ -18,8 +18,23 @@ class UnusedCodeAuditor {
   /// Creates a new [UnusedCodeAuditor] for the specified [projectRoot] and [options].
   UnusedCodeAuditor({
     Directory? projectRoot,
-    this.options = const AuditorOptions(),
-  }) : projectRoot = projectRoot ?? findProjectOrWorkspaceRoot();
+    AuditorOptions options = const AuditorOptions(),
+  })  : projectRoot = projectRoot ?? findProjectOrWorkspaceRoot(),
+        options = _resolveOptions(
+            projectRoot ?? findProjectOrWorkspaceRoot(), options);
+
+  static AuditorOptions _resolveOptions(Directory root, AuditorOptions opts) {
+    final pubspecExcludes = loadPubspecExcludes(root);
+    if (pubspecExcludes.isEmpty) return opts;
+
+    final merged = List<String>.from(opts.customExcludes);
+    for (final exp in pubspecExcludes) {
+      if (!merged.contains(exp)) {
+        merged.add(exp);
+      }
+    }
+    return opts.copyWith(customExcludes: merged);
+  }
 
   /// Runs the full code analysis and returns an [AnalysisReport].
   AnalysisReport run({AuditorProgressCallback? onProgress}) {
