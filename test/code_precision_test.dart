@@ -312,5 +312,138 @@ class DeadWidget extends StatelessWidget {
         tempDir.deleteSync(recursive: true);
       }
     });
+    test(
+        'isGeneratedDartFile identifies mapper, chopper, and generated folder files',
+        () {
+      expect(isGeneratedDartFile('lib/models/user.mapper.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/api/service.chopper.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/api/client.swagger.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/models/dto.auto_mappr.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/generated/intl/messages.dart'), isTrue);
+      expect(isGeneratedDartFile('lib/generated/l10n.dart'), isTrue);
+      expect(isGeneratedDartFile('generated/translations.dart'), isTrue);
+
+      expect(isGeneratedDartFile('lib/models/user.dart'), isFalse);
+      expect(isGeneratedDartFile('lib/services/mapper_service.dart'), isFalse);
+    });
+
+    test('matchesCustomExclude handles wildcards and folder globs accurately',
+        () {
+      final patterns = [
+        '*.mapper.dart',
+        '**/generated/**',
+        'test/mocks/*',
+        'lib/legacy/',
+      ];
+
+      expect(matchesCustomExclude('lib/models/user.mapper.dart', patterns),
+          isTrue);
+      expect(
+          matchesCustomExclude(
+              'lib/src/generated/intl/messages.dart', patterns),
+          isTrue);
+      expect(matchesCustomExclude('generated/l10n.dart', patterns), isTrue);
+      expect(
+          matchesCustomExclude('test/mocks/mock_api.dart', patterns), isTrue);
+      expect(
+          matchesCustomExclude('lib/legacy/old_helper.dart', patterns), isTrue);
+
+      expect(matchesCustomExclude('lib/models/user.dart', patterns), isFalse);
+      expect(matchesCustomExclude('test/services/api_test.dart', patterns),
+          isFalse);
+    });
+
+    test('loadPubspecExcludes extracts exclusions from pubspec.yaml correctly',
+        () {
+      final tempDir =
+          Directory.systemTemp.createTempSync('pubspec_exclude_test_');
+      try {
+        File('${tempDir.path}/pubspec.yaml').writeAsStringSync('''
+name: mock_app
+version: 1.0.0
+
+detect_unused_code:
+  exclude:
+    - "*.mapper.dart"
+    - "**/generated/**"
+    - test/mocks/* # inline comment
+''');
+
+        final excludes = loadPubspecExcludes(tempDir);
+        expect(excludes, contains('*.mapper.dart'));
+        expect(excludes, contains('**/generated/**'));
+        expect(excludes, contains('test/mocks/*'));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test(
+        'detect_unused ignores generated classes in mapper and generated folders',
+        () {
+      final tempDir =
+          Directory.systemTemp.createTempSync('generated_class_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        final genDir = Directory('${tempDir.path}/lib/generated')
+          ..createSync(recursive: true);
+
+        // 1. pubspec.yaml with exclude configuration
+        File('${tempDir.path}/pubspec.yaml').writeAsStringSync('''
+name: sample_test_app
+version: 1.0.0
+
+detect_unused_code:
+  exclude:
+    - "*.mapper.dart"
+    - "**/generated/**"
+''');
+
+        // 2. Active regular class
+        File('${libDir.path}/main.dart').writeAsStringSync('''
+void main() {
+  final u = ActiveUser();
+  print(u);
+}
+class ActiveUser {}
+''');
+
+        // 3. dart_mappable generated file with otherwise "unused" classes
+        File('${libDir.path}/user.mapper.dart').writeAsStringSync('''
+class UserMapperExtension {}
+class UserMapper {}
+''');
+
+        // 4. File in generated/ folder
+        File('${genDir.path}/l10n.dart').writeAsStringSync('''
+class S {}
+class GeneratedTranslationClass {}
+''');
+
+        final auditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runClassAnalysis: true,
+            runCommentAnalysis: false,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+            excludeGenerated: true,
+          ),
+        );
+
+        final report = auditor.run();
+
+        // No generated classes should ever be reported as dead classes!
+        final deadNames = report.deadClasses.map((c) => c.name).toSet();
+        expect(deadNames, isNot(contains('UserMapper')));
+        expect(deadNames, isNot(contains('UserMapperExtension')));
+        expect(deadNames, isNot(contains('S')));
+        expect(deadNames, isNot(contains('GeneratedTranslationClass')));
+        expect(report.deadClasses, isEmpty);
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

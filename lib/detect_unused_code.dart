@@ -32,6 +32,8 @@ export 'src/utils.dart'
         resolveTargetPath,
         walkDartFiles,
         isGeneratedDartFile,
+        matchesCustomExclude,
+        loadPubspecExcludes,
         hasKeepUnusedDirective,
         hasFileKeepUnusedDirective,
         hasDependencyInjectionAnnotation;
