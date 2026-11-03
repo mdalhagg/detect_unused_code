@@ -294,6 +294,8 @@ class CliRunner {
         args.any((a) => a.startsWith('--json=')) ||
         args.contains('--classes') ||
         args.contains('--unused-classes') ||
+        args.contains('--internal-classes') ||
+        args.contains('--internal-only') ||
         args.contains('--commented') ||
         args.contains('--comments') ||
         args.contains('--todos-only') ||
@@ -342,6 +344,8 @@ class CliRunner {
       }
     }
 
+    final onlyInternalClasses =
+        args.contains('--internal-classes') || args.contains('--internal-only');
     final onlyUnusedClasses =
         args.contains('--unused-classes') || args.contains('--classes');
     final onlyCommented = args.contains('--commented') ||
@@ -355,25 +359,39 @@ class CliRunner {
     final noTodos = args.contains('--no-todos') || args.contains('--no-todo');
     final noDiagnostics =
         args.contains('--no-diagnostics') || args.contains('--no-analyzer');
+    final explicitIncludeInternal = args.contains('--include-internal');
     final noInternal = args.contains('--no-internal');
-    final includeInternal = !noInternal;
+
+    final bool includeInternal;
+    if (noInternal) {
+      includeInternal = false;
+    } else if (onlyInternalClasses || explicitIncludeInternal) {
+      includeInternal = true;
+    } else if (onlyUnusedClasses) {
+      // Focused on dead classes only (matches dashboard category [1])
+      includeInternal = false;
+    } else {
+      includeInternal = true;
+    }
+
+    final hasSpecificClassFilter = onlyUnusedClasses || onlyInternalClasses;
 
     final runClassAnalysis = onlyTodos || onlyDiagnostics
         ? false
-        : (onlyUnusedClasses ? true : !onlyCommented);
+        : (hasSpecificClassFilter ? true : !onlyCommented);
     final runCommentAnalysis = onlyTodos || onlyDiagnostics
         ? false
-        : (onlyCommented ? true : !onlyUnusedClasses);
+        : (onlyCommented ? true : !hasSpecificClassFilter);
     final runTodoAnalysis = onlyTodos
         ? true
         : (!noTodos &&
-            !onlyUnusedClasses &&
+            !hasSpecificClassFilter &&
             !onlyCommented &&
             !onlyDiagnostics);
     final runDiagnostics = onlyDiagnostics
         ? true
         : (!noDiagnostics &&
-            !onlyUnusedClasses &&
+            !hasSpecificClassFilter &&
             !onlyCommented &&
             !onlyTodos);
 
@@ -998,7 +1016,7 @@ class CliRunner {
               ? '\n      ↳ Commented classes found inside: [ ${f.commentedClasses.join(', ')} ]'
               : '';
           print(
-              '   🗑️  ${f.fileUri}  [${f.commentRatio}% Comments - ${f.totalNonEmptyLines} lines]$classesHint');
+              '   🗑️  ${f.file}:1 [${f.commentRatio}% Comments - ${f.totalNonEmptyLines} lines]$classesHint');
         }
       } else {
         print(
@@ -1010,7 +1028,7 @@ class CliRunner {
             '\n⚠️ 【2. Heavily Commented Files (>= ${options.commentThreshold}%)】 - (${report.highRatioFiles.length} files):');
         for (final f in report.highRatioFiles) {
           print(
-              '   📄 ${f.fileUri}  ➜ ${f.commentRatio}% comments (${f.commentLinesCount}/${f.totalNonEmptyLines} lines)');
+              '   📄 ${f.file}:1 ➜ ${f.commentRatio}% comments (${f.commentLinesCount}/${f.totalNonEmptyLines} lines)');
         }
       }
 
@@ -1021,10 +1039,10 @@ class CliRunner {
             '\n📦 【3. Active Files Containing Dead Code Blocks】 - ($totalBlocks blocks in ${report.filesWithCommentBlocks.length} files):');
         for (final f in report.filesWithCommentBlocks) {
           print(
-              '   📁 ${f.fileUri} (${f.blocks.length} block${f.blocks.length > 1 ? 's' : ''}):');
+              '   📁 ${f.file} (${f.blocks.length} block${f.blocks.length > 1 ? 's' : ''}):');
           for (final b in f.blocks) {
             print(
-                '      ↳ Lines ${b.startLine.toString().padRight(4)} - ${b.endLine.toString().padRight(4)} (${b.totalLines} lines, ~${b.codeLines} lines of commented code)');
+                '      ↳ ${f.file}:${b.startLine} ➜ Lines ${b.startLine} - ${b.endLine} (${b.totalLines} lines, ~${b.codeLines} lines of commented code)');
             if (options.verbose) {
               final snippet =
                   b.sample.split('\n').map((l) => '         | $l').join('\n');
@@ -1037,19 +1055,26 @@ class CliRunner {
 
     print('\n${'-' * 78}');
 
+    final onlyInternalClasses =
+        args.contains('--internal-classes') || args.contains('--internal-only');
+    final onlyUnusedClasses =
+        args.contains('--unused-classes') || args.contains('--classes');
+
     if (options.runClassAnalysis) {
-      if (report.deadClasses.isNotEmpty) {
-        print(
-            '\n💀 【4. Dead Classes / Elements (Zero Usages Across Entire Project)】 - (${report.deadClasses.length} items):');
-        for (final c in report.deadClasses) {
-          final typeBadge = c.isPrivate ? 'PRIVATE' : 'PUBLIC';
-          final lineFormatted = '[L${c.line.toString().padRight(4)}]';
+      final showDeadClasses = !onlyInternalClasses || onlyUnusedClasses;
+      if (showDeadClasses) {
+        if (report.deadClasses.isNotEmpty) {
           print(
-              '   ❌ $lineFormatted ${c.fileUri} ➜ ${c.name} ($typeBadge ${c.category})');
+              '\n💀 【4. Dead Classes / Elements (Zero Usages Across Entire Project)】 - (${report.deadClasses.length} items):');
+          for (final c in report.deadClasses) {
+            final typeBadge = c.isPrivate ? 'PRIVATE' : 'PUBLIC';
+            print(
+                '   ❌ ${c.relPath}:${c.line} ➜ ${c.name} ($typeBadge ${c.category})');
+          }
+        } else {
+          print(
+              '\n✅ Unused Classes: All classes in this scope are actively used across the project.');
         }
-      } else {
-        print(
-            '\n✅ Unused Classes: All classes in this scope are actively used across the project.');
       }
 
       if (options.includeInternal) {
@@ -1059,9 +1084,8 @@ class CliRunner {
           print(
               '   (These classes are declared as public but only used inside their declaring file)');
           for (final c in report.internalOnlyClasses) {
-            final lineFormatted = '[L${c.line.toString().padRight(4)}]';
             print(
-                '   🔍 $lineFormatted ${c.fileUri} ➜ ${c.name} (${c.category}, ${c.internalMatches} local usages) ➜ Consider making private (_${c.name})');
+                '   🔍 ${c.relPath}:${c.line} ➜ ${c.name} (${c.category}, ${c.internalMatches} local usages) ➜ Consider making private (_${c.name})');
           }
         } else {
           print(
@@ -1076,8 +1100,7 @@ class CliRunner {
         print(
             '\n📝 【6. TODO Comments & Pending Tasks】 - (${report.todos.length} items):');
         for (final t in report.todos) {
-          final lineFormatted = '[L${t.line.toString().padRight(4)}]';
-          print('   📝 $lineFormatted ${t.fileUri} ➜ ${t.message}');
+          print('   📝 ${t.file}:${t.line} ➜ ${t.message}');
         }
       } else {
         print('\n✅ TODO Tasks: No pending TODO comments found in this scope.');
@@ -1091,8 +1114,7 @@ class CliRunner {
         print(
             '\n📦 【7. Unused & Unnecessary Imports】 - (${report.unusedImports.length} items):');
         for (final d in report.unusedImports) {
-          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
-          print('   📦 $lineFormatted ${d.fileUri} ➜ ${d.message}');
+          print('   📦 ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
         }
       } else {
         print('\n✅ Imports: No unused or unnecessary imports detected.');
@@ -1102,8 +1124,7 @@ class CliRunner {
         print(
             '\n🏷️ 【8. Unused Local Variables & Fields】 - (${report.unusedVariablesAndFields.length} items):');
         for (final d in report.unusedVariablesAndFields) {
-          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
-          print('   🏷️ $lineFormatted ${d.fileUri} ➜ ${d.message}');
+          print('   🏷️ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
         }
       } else {
         print(
@@ -1114,8 +1135,7 @@ class CliRunner {
         print(
             '\n⚙️ 【9. Unused Elements & Private Members】 - (${report.unusedElements.length} items):');
         for (final d in report.unusedElements) {
-          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
-          print('   ⚙️ $lineFormatted ${d.fileUri} ➜ ${d.message}');
+          print('   ⚙️ ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
         }
       } else {
         print(
@@ -1126,8 +1146,7 @@ class CliRunner {
         print(
             '\n💀 【10. Dead Code & Dead Null-Aware Expressions】 - (${report.deadCodeAndExpressions.length} items):');
         for (final d in report.deadCodeAndExpressions) {
-          final lineFormatted = '[L${d.line.toString().padRight(4)}]';
-          print('   💀 $lineFormatted ${d.fileUri} ➜ ${d.message}');
+          print('   💀 ${d.file}:${d.line}:${d.column} ➜ ${d.message}');
         }
       } else {
         print(
@@ -1314,8 +1333,11 @@ ANALYSIS FILTER FLAGS:
   --assets,                Scan and report only unused assets, images, and fonts across
   --audit-assets           all discovered pubspec.yaml packages in the workspace.
 
-  --unused-classes,        Scan and report only unused/dead classes and widgets.
+  --unused-classes,        Scan and report only unused/dead classes and widgets (zero usages).
   --classes
+  --internal-classes,      Scan and report only file-internal public classes (0 external references).
+  --internal-only
+  --include-internal       Include file-internal public classes in class audit reports.
 
   --commented,             Scan and report only commented-out files and dead code blocks.
   --comments,

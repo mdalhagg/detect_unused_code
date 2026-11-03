@@ -532,7 +532,7 @@ class UnusedCodeAuditor {
             category: category,
             isPrivate: className.startsWith('_'),
             relPath: getRelativePath(file.path, rootPath),
-            fileUri: toFileUri(file.path),
+            fileUri: toFileUri(file.path, line: i + 1),
             memberNames: memberNames,
           ));
         }

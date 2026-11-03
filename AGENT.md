@@ -53,6 +53,9 @@ detect_unused --undo
 | :--- | :--- |
 | **Audit workspace (Code, Assets, Packages)** | `detect_unused --scan` |
 | **Launch interactive dashboard** | `detect_unused` |
+| **Audit only dead classes & widgets (0 usages)** | `detect_unused --classes` |
+| **Audit only file-internal public classes** | `detect_unused --internal-classes` |
+| **Include internal classes in class audit** | `detect_unused --classes --include-internal` |
 | **Simulate full cleanup (Zero disk changes)** | `detect_unused --clean-all --dry-run` |
 | **Execute full 9-stage cleanup** | `detect_unused --clean-all -y` |
 | **Clean only unused assets & fonts** | `detect_unused --clean-assets -y` |

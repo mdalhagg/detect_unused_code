@@ -1,3 +1,16 @@
+## 3.6.0
+
+- **Standardized Clickable Terminal Links (`path:line:col`):**
+  - Upgraded terminal report formatting across all CLI outputs to the universal `path/file.dart:line` and `path/file.dart:line:column` syntax.
+  - Holding `Ctrl + LeftClick` in VS Code, Cursor, Windows Terminal, and PowerShell now jumps instantly and accurately to the exact file, line, and column for dead classes, TODOs, diagnostics, and code blocks.
+  - Included line and column numbers directly inside `DeclaredClassItem.fileUri` and `UnusedClassResult.fileUri`.
+- **Targeted `--classes` Audit & Clean Separation of Concerns:**
+  - `detect_unused_code --classes` (and `--unused-classes`) now strictly focuses on **Dead Classes & Widgets** (matching Dashboard Category `[1]`), eliminating terminal clutter from hundreds of internal-only classes.
+  - Added dedicated CLI flags `--internal-classes` (alias: `--internal-only`) to inspect public classes used only within their declaring file.
+  - Retained `--include-internal` to optionally merge internal classes into class audit reports when desired.
+- **CLI & Dashboard Presentation Alignment:**
+  - Streamlined and unified the output formatting of direct CLI commands to match the clarity, aesthetic, and precision of the interactive dashboard.
+
 ## 3.5.0
 
 - **Generated Classes & Data Models Protection (Zero False Positives):**

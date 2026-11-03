@@ -445,5 +445,88 @@ class GeneratedTranslationClass {}
         tempDir.deleteSync(recursive: true);
       }
     });
+    test('UnusedClassResult fileUri includes clickable line number', () {
+      final tempDir = Directory.systemTemp.createTempSync('uri_line_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        File('${libDir.path}/sample.dart').writeAsStringSync('''
+class DeadSampleClass {}
+''');
+
+        final auditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runClassAnalysis: true,
+            runCommentAnalysis: false,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+          ),
+        );
+        final report = auditor.run();
+        expect(report.deadClasses, isNotEmpty);
+        final dead = report.deadClasses.first;
+        expect(dead.line, equals(1));
+        expect(dead.fileUri, endsWith(':1'));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+    test(
+        'Auditor options cleanly separate dead classes from internal-only classes',
+        () {
+      final tempDir = Directory.systemTemp.createTempSync('cli_classes_test_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        File('${tempDir.path}/pubspec.yaml').writeAsStringSync('''
+name: test_project
+version: 1.0.0
+''');
+        File('${libDir.path}/sample.dart').writeAsStringSync('''
+class DeadWidget {}
+
+class InternalOnlyHelper {
+  void call() {}
+}
+
+void useHelper() {
+  InternalOnlyHelper().call();
+}
+''');
+
+        final deadOnlyAuditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runClassAnalysis: true,
+            includeInternal: false,
+            runCommentAnalysis: false,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+          ),
+        );
+        final deadReport = deadOnlyAuditor.run();
+        expect(
+            deadReport.deadClasses.map((c) => c.name), contains('DeadWidget'));
+        expect(deadReport.deadClasses.map((c) => c.name),
+            isNot(contains('InternalOnlyHelper')));
+
+        final internalAuditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runClassAnalysis: true,
+            includeInternal: true,
+            runCommentAnalysis: false,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+          ),
+        );
+        final internalReport = internalAuditor.run();
+        expect(internalReport.internalOnlyClasses.map((c) => c.name),
+            contains('InternalOnlyHelper'));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }
