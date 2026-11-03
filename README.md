@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.5.0
+  detect_unused_code: ^3.6.0
 ```
 
 ---
@@ -227,8 +227,16 @@ detect_unused --todos-only
 # Audit only Dart analyzer diagnostics (unused imports, variables, dead code)
 detect_unused --diagnostics-only
 
-# Audit only unused/dead classes
+# Audit only unused/dead classes and widgets (zero usages)
+detect_unused --classes
 detect_unused --unused-classes
+
+# Audit only public classes used only within their declaring file
+detect_unused --internal-classes
+detect_unused --internal-only
+
+# Include internal-only classes in class audit report
+detect_unused --classes --include-internal
 
 # Audit only commented-out files and code blocks
 detect_unused --commented
@@ -264,7 +272,7 @@ detect_unused --packages --skip-dev-deps
 
 ---
 
-## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.5.0)
+## 🎛️ Interactive Dashboard CLI Flags & Instant Rollback (v3.2.0+ / v3.6.0)
 
 While running `detect_unused` launches the interactive dashboard automatically, you can also control or automate it directly via CLI flags:
 
