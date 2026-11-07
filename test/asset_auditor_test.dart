@@ -519,5 +519,137 @@ class AppIcons {
       expect(report.totalScannedAssets, equals(1));
       expect(report.unusedAssets.isEmpty, isTrue);
     });
+
+    test(
+        'Issue #30: Assets loaded via interpolated paths are recognized as dynamically used',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: repro_dyn_assets
+environment:
+  sdk: ^3.0.0
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  assets:
+    - assets/docs/doc_en.md
+    - assets/docs/doc_de.md
+    - assets/docs/orphaned.md
+''');
+
+      Directory('${tempDir.path}/assets/docs').createSync(recursive: true);
+      File('${tempDir.path}/assets/docs/doc_en.md')
+          .writeAsStringSync('English');
+      File('${tempDir.path}/assets/docs/doc_de.md').writeAsStringSync('German');
+      File('${tempDir.path}/assets/docs/orphaned.md')
+          .writeAsStringSync('Orphaned');
+
+      Directory('${tempDir.path}/lib').createSync(recursive: true);
+      File('${tempDir.path}/lib/main.dart').writeAsStringSync('''
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+Future<String> loadDoc(String languageCode) =>
+    rootBundle.loadString('assets/docs/doc_\$languageCode.md');
+
+void main() => runApp(const MaterialApp(home: SizedBox()));
+''');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      final unusedNames =
+          report.unusedAssets.map((u) => u.path.replaceAll(r'\', '/')).toList();
+      // doc_en.md and doc_de.md matched by 'assets/docs/doc_$languageCode.md'
+      expect(unusedNames.any((p) => p.contains('doc_en.md')), isFalse);
+      expect(unusedNames.any((p) => p.contains('doc_de.md')), isFalse);
+      // orphaned.md is truly unused and must be reported
+      expect(unusedNames.any((p) => p.contains('orphaned.md')), isTrue);
+    });
+
+    test(
+        'Issue #30: Assets matching detect_unused_code.exclude_assets in pubspec.yaml are excluded from cleanup',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: repro_exclude_assets
+environment:
+  sdk: ^3.0.0
+flutter:
+  assets:
+    - assets/i18n/
+detect_unused_code:
+  exclude_assets:
+    - "assets/i18n/**"
+''');
+
+      Directory('${tempDir.path}/assets/i18n').createSync(recursive: true);
+      File('${tempDir.path}/assets/i18n/custom_locale.json')
+          .writeAsStringSync('{}');
+
+      Directory('${tempDir.path}/lib').createSync(recursive: true);
+      File('${tempDir.path}/lib/main.dart').writeAsStringSync('''
+void main() {}
+''');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      expect(
+          report.unusedAssets.any((u) => u.path.contains('custom_locale.json')),
+          isFalse);
+    });
+
+    test(
+        'Issue #31: Font files with declared family used in ThemeData or TextStyle are recognized as used',
+        () {
+      final rootPubspec = File('${tempDir.path}/pubspec.yaml');
+      rootPubspec.writeAsStringSync('''
+name: repro_fonts_app
+environment:
+  sdk: ^3.0.0
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+        - asset: assets/fonts/Inter-Italic.ttf
+          style: italic
+    - family: UnusedFamily
+      fonts:
+        - asset: assets/fonts/Unused.ttf
+''');
+
+      Directory('${tempDir.path}/assets/fonts').createSync(recursive: true);
+      File('${tempDir.path}/assets/fonts/Inter.ttf').writeAsStringSync('font1');
+      File('${tempDir.path}/assets/fonts/Inter-Italic.ttf')
+          .writeAsStringSync('font2');
+      File('${tempDir.path}/assets/fonts/Unused.ttf')
+          .writeAsStringSync('unused');
+
+      Directory('${tempDir.path}/lib').createSync(recursive: true);
+      File('${tempDir.path}/lib/main.dart').writeAsStringSync('''
+import 'package:flutter/material.dart';
+
+final theme = ThemeData(fontFamily: 'Inter');
+
+void main() => runApp(MaterialApp(theme: theme, home: const SizedBox()));
+''');
+
+      final auditor = AssetAuditor(workspaceRoot: tempDir);
+      final report = auditor.run();
+
+      final unusedNames =
+          report.unusedAssets.map((u) => u.path.replaceAll(r'\', '/')).toList();
+      // Inter.ttf and Inter-Italic.ttf are recognized as used via fontFamily: 'Inter'
+      expect(unusedNames.any((p) => p.contains('Inter.ttf')), isFalse);
+      expect(unusedNames.any((p) => p.contains('Inter-Italic.ttf')), isFalse);
+      // Unused.ttf is truly unused and should be reported
+      expect(unusedNames.any((p) => p.contains('Unused.ttf')), isTrue);
+    });
   });
 }

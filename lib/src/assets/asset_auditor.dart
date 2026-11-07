@@ -7,6 +7,36 @@ import 'pubspec_scanner.dart';
 /// Callback signature for asset auditing progress.
 typedef AssetProgressCallback = void Function(int percent, String message);
 
+/// Represents a dynamic asset pattern extracted from Dart string interpolation
+/// (e.g. `'assets/docs/doc_$code.md'`).
+class _DynamicAssetPattern {
+  final String prefix;
+  final String suffix;
+
+  _DynamicAssetPattern(this.prefix, this.suffix);
+
+  bool matches(String normRel) {
+    final fileName = normRel.split('/').last;
+
+    // 1. Full path prefix match (e.g. prefix: 'assets/docs/doc_', suffix: '.md')
+    if (prefix.contains('/') || prefix.startsWith('assets')) {
+      if (normRel.startsWith(prefix) && normRel.endsWith(suffix)) {
+        return true;
+      }
+    }
+
+    // 2. Filename prefix match (e.g. 'doc_*.md')
+    final fnPrefix = prefix.contains('/') ? prefix.split('/').last : prefix;
+    if (fnPrefix.length >= 2 &&
+        fileName.startsWith(fnPrefix) &&
+        fileName.endsWith(suffix)) {
+      return true;
+    }
+
+    return false;
+  }
+}
+
 /// Primary auditor engine that scans Dart and Flutter workspaces for unused assets, images, and fonts.
 class AssetAuditor {
   /// The root directory of the workspace or project.
@@ -69,6 +99,8 @@ class AssetAuditor {
 
     onProgress?.call(35, 'Indexing Dart source code across workspace...');
     final codeCorpus = _buildWorkspaceCodeCorpus(workspaceRoot);
+    final dynamicPatterns = _extractDynamicAssetPatterns(codeCorpus);
+    final pubspecExcludes = loadPubspecExcludes(workspaceRoot);
 
     onProgress?.call(55, 'Auditing asset usage and references...');
     final unusedAssets = <UnusedAssetItem>[];
@@ -96,13 +128,16 @@ class AssetAuditor {
       bool isUsed = false;
 
       if (category == AssetCategory.font) {
-        isUsed = _isFontUsed(file, ownerPkg, codeCorpus);
+        isUsed =
+            _isFontUsed(file, ownerPkg, codeCorpus, packages, pubspecExcludes);
       } else {
         isUsed = _isAssetUsed(
           file: file,
           relPackage: relPackage,
           ownerPkg: ownerPkg,
           codeCorpus: codeCorpus,
+          dynamicPatterns: dynamicPatterns,
+          pubspecExcludes: pubspecExcludes,
         );
       }
 
@@ -139,7 +174,8 @@ class AssetAuditor {
       bool isUsed = false;
 
       if (category == AssetCategory.font) {
-        isUsed = _isFontUsed(file, ownerPkg, codeCorpus);
+        isUsed =
+            _isFontUsed(file, ownerPkg, codeCorpus, packages, pubspecExcludes);
       } else if (isVariant) {
         // Resolve parent base file
         final fileName = vMatch.group(1)!;
@@ -154,6 +190,8 @@ class AssetAuditor {
             relPackage: relPackage,
             ownerPkg: ownerPkg,
             codeCorpus: codeCorpus,
+            dynamicPatterns: dynamicPatterns,
+            pubspecExcludes: pubspecExcludes,
           );
         }
       } else {
@@ -290,14 +328,23 @@ class AssetAuditor {
     required String relPackage,
     required PackageDescriptor ownerPkg,
     required String codeCorpus,
+    required List<_DynamicAssetPattern> dynamicPatterns,
+    required List<String> pubspecExcludes,
   }) {
     final fileName = file.uri.pathSegments.safeLast ?? '';
     final nameWithoutExt = fileName.contains('.')
         ? fileName.substring(0, fileName.lastIndexOf('.'))
         : fileName;
 
-    // 1. Direct path check (e.g. 'assets/images/logo.png')
     final normRel = relPackage.replaceAll(r'\', '/');
+
+    // 0. Check custom pubspec.yaml exclusions
+    if (pubspecExcludes.isNotEmpty &&
+        matchesCustomExclude(normRel, pubspecExcludes)) {
+      return true;
+    }
+
+    // 1. Direct path check (e.g. 'assets/images/logo.png')
     if (codeCorpus.contains(normRel)) return true;
 
     // 2. Direct filename check (e.g. 'logo.png')
@@ -307,11 +354,17 @@ class AssetAuditor {
     final crossPkgRef = 'packages/${ownerPkg.name}/$normRel';
     if (codeCorpus.contains(crossPkgRef)) return true;
 
+    // 4. Dynamic interpolated path patterns (e.g. 'assets/docs/doc_$lang.md')
+    for (final pat in dynamicPatterns) {
+      if (pat.matches(normRel)) {
+        return true;
+      }
+    }
+
     // Check if asset is part of an internationalization / translation structure
     final isI18n = _isI18nAsset(normRel);
 
-    // 4. Quoted asset name literal (e.g. 'api_responses', "api_responses", 'common', 'en')
-    // Crucial for modular i18n loaders ('assets/i18n/$langCode/$fileName.json') and dynamic asset maps
+    // 5. Quoted asset name literal (e.g. 'api_responses', "api_responses", 'common', 'en')
     final minLiteralLength = isI18n ? 2 : 3;
     if (nameWithoutExt.length >= minLiteralLength) {
       final quotedPattern =
@@ -319,25 +372,23 @@ class AssetAuditor {
       if (quotedPattern.hasMatch(codeCorpus)) return true;
     }
 
-    // 5. Raw identifier or snake_case reference with word boundaries (e.g. \bapi_responses\b)
+    // 6. Raw identifier or snake_case reference with word boundaries (e.g. \bapi_responses\b)
     if (nameWithoutExt.length >= 3 &&
         RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(nameWithoutExt)) {
       final idPattern = RegExp('\\b${RegExp.escape(nameWithoutExt)}\\b');
       if (idPattern.hasMatch(codeCorpus)) return true;
     }
 
-    // 6. Code generator identifiers (flutter_gen / spider)
-    // Converts snake_case or kebab-case (e.g. 'ic_user_avatar.png') to camelCase 'icUserAvatar'
+    // 7. Code generator identifiers (flutter_gen / spider)
     final camelCase = _toCamelCase(nameWithoutExt);
     if (camelCase.length >= 3 && camelCase != nameWithoutExt) {
-      // Must match as an identifier boundary in Dart
       final idPattern = RegExp('\\b$camelCase\\b');
       if (idPattern.hasMatch(codeCorpus)) {
         return true;
       }
     }
 
-    // 7. PascalCase identifier check for uppercase asset constant generators (e.g. 'IcUserAvatar')
+    // 8. PascalCase identifier check for uppercase asset constant generators (e.g. 'IcUserAvatar')
     if (camelCase.length >= 3) {
       final pascalCase =
           '${camelCase[0].toUpperCase()}${camelCase.substring(1)}';
@@ -352,6 +403,40 @@ class AssetAuditor {
     return false;
   }
 
+  /// Extracts dynamic asset interpolation patterns from Dart source code corpus.
+  static List<_DynamicAssetPattern> _extractDynamicAssetPatterns(
+      String codeCorpus) {
+    final patterns = <_DynamicAssetPattern>[];
+    final regex = RegExp(r'''['"]([^'"\n\r]*?)\$([^'"\n\r]*?)['"]''');
+
+    for (final match in regex.allMatches(codeCorpus)) {
+      final prefix = match.group(1) ?? '';
+      final afterDollar = match.group(2) ?? '';
+
+      String suffix = '';
+      if (afterDollar.startsWith('{')) {
+        final closeIdx = afterDollar.indexOf('}');
+        if (closeIdx != -1) {
+          suffix = afterDollar.substring(closeIdx + 1);
+        }
+      } else {
+        final idMatch = RegExp(r'^[a-zA-Z0-9_]+').firstMatch(afterDollar);
+        if (idMatch != null) {
+          suffix = afterDollar.substring(idMatch.end);
+        }
+      }
+
+      final cleanPrefix = prefix.replaceAll(r'\', '/');
+      if (cleanPrefix.contains('/') ||
+          cleanPrefix.startsWith('assets') ||
+          (cleanPrefix.length >= 2 && suffix.startsWith('.'))) {
+        patterns.add(_DynamicAssetPattern(cleanPrefix, suffix));
+      }
+    }
+
+    return patterns;
+  }
+
   /// Checks whether an asset relative path belongs to a known localization / internationalization directory.
   bool _isI18nAsset(String normRel) {
     final lower = normRel.toLowerCase();
@@ -364,26 +449,56 @@ class AssetAuditor {
         lower.contains('/locale/');
   }
 
-  /// Checks if a font file is used via its declared fontFamily or filename.
-  bool _isFontUsed(File file, PackageDescriptor ownerPkg, String codeCorpus) {
+  /// Checks if a font file is used via its declared fontFamily or filename across workspace packages.
+  bool _isFontUsed(
+    File file,
+    PackageDescriptor ownerPkg,
+    String codeCorpus,
+    List<PackageDescriptor> allPackages,
+    List<String> pubspecExcludes,
+  ) {
     final fileName = file.uri.pathSegments.safeLast ?? '';
-
-    // Check if filename is directly referenced (e.g. 'assets/fonts/Cairo.ttf' or 'Cairo.ttf')
-    if (codeCorpus.contains(fileName)) return true;
-
-    // Check if any declared font family containing this asset is referenced in code
     final normPath = getRelativePath(file.path, ownerPkg.packageRootDir.path)
         .replaceAll(r'\', '/');
+    final cleanNormPath = normPath.replaceFirst(RegExp(r'^\.?/+'), '');
 
-    for (final entry in ownerPkg.declaredFonts.entries) {
-      final family = entry.key;
-      final assets = entry.value;
+    // 0. Check custom pubspec.yaml exclusions
+    if (pubspecExcludes.isNotEmpty &&
+        matchesCustomExclude(normPath, pubspecExcludes)) {
+      return true;
+    }
 
-      if (assets.any((a) => a.replaceAll(r'\', '/') == normPath)) {
-        // If the font family name is referenced as a string literal in Dart code (e.g. fontFamily: 'MyFont' or "MyFont")
-        final familyPattern = RegExp('[\'"]${RegExp.escape(family)}[\'"]');
-        if (familyPattern.hasMatch(codeCorpus)) {
-          return true;
+    // 1. Direct filename reference (e.g. 'assets/fonts/Cairo.ttf' or 'Cairo.ttf')
+    if (fileName.isNotEmpty && codeCorpus.contains(fileName)) return true;
+
+    // 2. Check font family declarations across all workspace packages
+    for (final pkg in allPackages) {
+      for (final entry in pkg.declaredFonts.entries) {
+        final family = entry.key;
+        final assets = entry.value;
+
+        final isFamilyAsset = assets.any((a) {
+          final cleanA =
+              a.replaceAll(r'\', '/').replaceFirst(RegExp(r'^\.?/+'), '');
+          return cleanA == cleanNormPath ||
+              cleanNormPath.endsWith(cleanA) ||
+              cleanA.endsWith(cleanNormPath) ||
+              (cleanA.split('/').safeLast == fileName);
+        });
+
+        if (isFamilyAsset) {
+          if (family.isNotEmpty) {
+            // Check literal string quotes ('Inter' or "Inter")
+            if (codeCorpus.contains("'$family'") ||
+                codeCorpus.contains('"$family"')) {
+              return true;
+            }
+            // Check explicit fontFamily reference in Dart code
+            if (RegExp('fontFamily:\\s*[\'"]?${RegExp.escape(family)}[\'"]?')
+                .hasMatch(codeCorpus)) {
+              return true;
+            }
+          }
         }
       }
     }

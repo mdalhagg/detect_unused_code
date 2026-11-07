@@ -1,3 +1,26 @@
+## 3.7.0
+
+- **String Interpolation Awareness for Dart Code Auditing (Resolves [#29](https://github.com/mdalhagg/detect_unused_code/issues/29)):**
+  - Upgraded code stripping engine (`stripCommentsAndStrings`) to be completely syntax-aware of Dart string interpolation (`${expression}` and `$variable`).
+  - Executable Dart expressions inside `${...}` (including classes, extensions, getters, and method calls) are now preserved verbatim rather than replaced with blank spaces.
+  - Fixes critical false positives where extensions or getters accessed inside string literals (e.g. `'v$version-${ENVIRONMENT.tag}'`) were falsely reported as dead classes and targeted for deletion by `--clean-dead-classes`.
+
+- **Dynamic Interpolated Asset Paths Recognition (Resolves [#30](https://github.com/mdalhagg/detect_unused_code/issues/30)):**
+  - Added dynamic pattern recognition in `AssetAuditor` for asset paths built using string interpolation (e.g. `rootBundle.loadString('assets/docs/doc_$languageCode.md')` or `Image.asset('assets/images/banner_${theme}.png')`).
+  - Assets matching dynamic path prefixes and file extensions in their declared folders are now automatically recognized as actively used.
+  - Added support for `exclude_assets` / `assets_exclude` under `detect_unused_code:` in `pubspec.yaml`, allowing projects to declare glob exclusion patterns for dynamic assets:
+    ```yaml
+    detect_unused_code:
+      exclude_assets:
+        - "assets/docs/**"
+        - "assets/i18n/**"
+    ```
+
+- **Robust Font Family Resolution & Multi-Package Monorepo Support (Resolves [#31](https://github.com/mdalhagg/detect_unused_code/issues/31)):**
+  - Enhanced font usage audit in `AssetAuditor` (`_isFontUsed`) with flexible path normalization (matching both relative asset paths and base file names regardless of leading `./` or packaging differences).
+  - Cross-package font audit: fonts declared in shared or module packages are now accurately audited across all Dart files throughout monorepo workspaces.
+  - Extended font family matching to recognize `ThemeData(fontFamily: 'Inter')`, `TextStyle(fontFamily: 'Inter')`, and explicit font constants without false positives.
+
 ## 3.6.0
 
 - **Standardized Clickable Terminal Links (`path:line:col`):**

@@ -81,6 +81,8 @@ detect_unused --undo
 
 The engine has built-in guards that you should explain to users when asked:
 - **Generated Code**: Automatically ignores `*.g.dart`, `*.freezed.dart`, `*.mocks.dart`, `*.config.dart`, `*.gr.dart`, `*.gen.dart`, `*.drift.dart` during cleanup while indexing them for references so active models are not flagged as unused.
+- **String Interpolation Awareness**: Syntax-aware parsing of Dart string interpolation (`${...}` and `$var`) so active members and extensions are never flagged as dead when invoked inside string literals.
+- **Dynamic Assets & Font Protection**: Automatically matches interpolated asset path templates (e.g. `'assets/docs/doc_$code.md'`) and declared font families throughout monorepo workspaces, with support for `exclude_assets:` in `pubspec.yaml`.
 - **Dependency Injection**: Classes decorated with `@injectable`, `@singleton`, `@lazySingleton`, `@module`, `@named`, `@factoryMethod`, `@riverpod`, `@entrypoint`, and `@pragma` are automatically protected from deletion.
 - **Dev Dependencies & Tooling**: Automatically inspects `analysis_options.yaml` (for linter rulesets like `saropa_lints` and analyzer plugins like `custom_lint`) and `build.yaml` (for builder configurations). Supports `--ignore-dev-dependencies` (or interactive dashboard toggle `[I]`) to prevent dev tooling from being flagged.
 - **Preservation Directives**:
