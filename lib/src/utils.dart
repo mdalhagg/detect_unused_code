@@ -332,6 +332,12 @@ List<String> extractCommentedClasses(String content) {
   return found.toList();
 }
 
+bool _isIdentStart(int code) =>
+    (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 95;
+
+bool _isIdentPart(int code) =>
+    _isIdentStart(code) || (code >= 48 && code <= 57);
+
 /// Strips all block comments, single-line comments, and string literals from [content]
 /// while preserving exact line offsets and character positions.
 String stripCommentsAndStrings(String content) {
@@ -425,6 +431,72 @@ String stripCommentsAndStrings(String content) {
             idx += 2;
             continue;
           }
+          if (!isRaw && content[idx] == r'$' && idx + 1 < len) {
+            if (content[idx + 1] == '{') {
+              buffer.write('  ');
+              idx += 2;
+              int depth = 1;
+              String? innerQuote;
+              while (idx < len && depth > 0) {
+                final inCur = content[idx];
+                if (innerQuote != null) {
+                  if (inCur == '\\' && idx + 1 < len) {
+                    buffer.write('  ');
+                    idx += 2;
+                    continue;
+                  }
+                  if (inCur == innerQuote) {
+                    innerQuote = null;
+                    buffer.write(' ');
+                    idx++;
+                    continue;
+                  }
+                  if (inCur == '\n') {
+                    buffer.write('\n');
+                  } else if (inCur == '\r') {
+                    buffer.write('\r');
+                  } else {
+                    buffer.write(' ');
+                  }
+                  idx++;
+                  continue;
+                }
+                if (inCur == "'" || inCur == '"') {
+                  innerQuote = inCur;
+                  buffer.write(' ');
+                  idx++;
+                  continue;
+                }
+                if (inCur == '{') {
+                  depth++;
+                  buffer.write('{');
+                  idx++;
+                } else if (inCur == '}') {
+                  depth--;
+                  buffer.write(depth == 0 ? ' ' : '}');
+                  idx++;
+                } else if (inCur == '\n') {
+                  buffer.write('\n');
+                  idx++;
+                } else if (inCur == '\r') {
+                  buffer.write('\r');
+                  idx++;
+                } else {
+                  buffer.write(inCur);
+                  idx++;
+                }
+              }
+              continue;
+            } else if (_isIdentStart(content.codeUnitAt(idx + 1))) {
+              buffer.write(' ');
+              idx++;
+              while (idx < len && _isIdentPart(content.codeUnitAt(idx))) {
+                buffer.write(content[idx]);
+                idx++;
+              }
+              continue;
+            }
+          }
           if (content[idx] == '\n') {
             buffer.write('\n');
           } else if (content[idx] == '\r') {
@@ -436,7 +508,7 @@ String stripCommentsAndStrings(String content) {
         }
         continue;
       } else {
-        // Single-line string
+        // Single-line string with interpolation awareness (${expr} and $var)
         buffer.write(' ');
         idx++;
         while (idx < len) {
@@ -454,6 +526,72 @@ String stripCommentsAndStrings(String content) {
             buffer.write('  ');
             idx += 2;
             continue;
+          }
+          if (!isRaw && cur == r'$' && idx + 1 < len) {
+            if (content[idx + 1] == '{') {
+              buffer.write('  ');
+              idx += 2;
+              int depth = 1;
+              String? innerQuote;
+              while (idx < len && depth > 0) {
+                final inCur = content[idx];
+                if (innerQuote != null) {
+                  if (inCur == '\\' && idx + 1 < len) {
+                    buffer.write('  ');
+                    idx += 2;
+                    continue;
+                  }
+                  if (inCur == innerQuote) {
+                    innerQuote = null;
+                    buffer.write(' ');
+                    idx++;
+                    continue;
+                  }
+                  if (inCur == '\n') {
+                    buffer.write('\n');
+                  } else if (inCur == '\r') {
+                    buffer.write('\r');
+                  } else {
+                    buffer.write(' ');
+                  }
+                  idx++;
+                  continue;
+                }
+                if (inCur == "'" || inCur == '"') {
+                  innerQuote = inCur;
+                  buffer.write(' ');
+                  idx++;
+                  continue;
+                }
+                if (inCur == '{') {
+                  depth++;
+                  buffer.write('{');
+                  idx++;
+                } else if (inCur == '}') {
+                  depth--;
+                  buffer.write(depth == 0 ? ' ' : '}');
+                  idx++;
+                } else if (inCur == '\n') {
+                  buffer.write('\n');
+                  idx++;
+                } else if (inCur == '\r') {
+                  buffer.write('\r');
+                  idx++;
+                } else {
+                  buffer.write(inCur);
+                  idx++;
+                }
+              }
+              continue;
+            } else if (_isIdentStart(content.codeUnitAt(idx + 1))) {
+              buffer.write(' ');
+              idx++;
+              while (idx < len && _isIdentPart(content.codeUnitAt(idx))) {
+                buffer.write(content[idx]);
+                idx++;
+              }
+              continue;
+            }
           }
           buffer.write(' ');
           idx++;
@@ -674,8 +812,12 @@ List<String> loadPubspecExcludes(Directory projectRoot) {
 
       if (trimmed == 'exclude:' ||
           trimmed == 'ignore:' ||
+          trimmed == 'exclude_assets:' ||
+          trimmed == 'assets_exclude:' ||
           trimmed.startsWith('exclude:') ||
-          trimmed.startsWith('ignore:')) {
+          trimmed.startsWith('ignore:') ||
+          trimmed.startsWith('exclude_assets:') ||
+          trimmed.startsWith('assets_exclude:')) {
         inExcludeSection = true;
         excludeIndent = indent;
         continue;

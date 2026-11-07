@@ -174,7 +174,7 @@ dart pub global activate detect_unused_code
 ### As a Dev Dependency (in `pubspec.yaml`)
 ```yaml
 dev_dependencies:
-  detect_unused_code: ^3.6.0
+  detect_unused_code: ^3.7.0
 ```
 
 ---
@@ -216,6 +216,9 @@ detect_unused_code:
     - "*.g.dart"            # json_serializable / freezed files
     - "**/generated/**"     # intl_utils or generated localization folders
     - "test/mocks/*"        # mock files
+  exclude_assets:
+    - "assets/docs/**"      # dynamic documentation files
+    - "assets/i18n/**"      # dynamic localization bundles
 ```
 *(Aliases `detect_unused:` and `ignore:` are also supported).*
 

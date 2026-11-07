@@ -528,5 +528,57 @@ void useHelper() {
         tempDir.deleteSync(recursive: true);
       }
     });
+
+    test(
+        'Issue #29: Extension getters accessed inside string interpolation are recognized as used',
+        () {
+      final tempDir = Directory.systemTemp.createTempSync('issue29_ext_');
+      try {
+        final libDir = Directory('${tempDir.path}/lib')
+          ..createSync(recursive: true);
+        File('${libDir.path}/enums.dart').writeAsStringSync("""
+enum AppEnvironment { development, testing, production }
+
+extension AppEnvironmentExtension on AppEnvironment {
+  String get tag {
+    return switch (this) {
+      AppEnvironment.development => 'dev',
+      AppEnvironment.testing => 'test',
+      AppEnvironment.production => 'prod',
+    };
+  }
+}
+""");
+        File('${libDir.path}/configs.dart').writeAsStringSync("""
+import 'enums.dart';
+AppEnvironment ENVIRONMENT = AppEnvironment.development;
+""");
+        File('${libDir.path}/settings_view.dart').writeAsStringSync("""
+import 'configs.dart';
+import 'enums.dart';
+
+String versionLabel(String version) => 'v\$version-\${ENVIRONMENT.tag}';
+""");
+        File('${libDir.path}/main.dart').writeAsStringSync("""
+import 'settings_view.dart';
+void main() => print(versionLabel('1.0.0'));
+""");
+
+        final auditor = UnusedCodeAuditor(
+          projectRoot: tempDir,
+          options: const AuditorOptions(
+            runClassAnalysis: true,
+            runCommentAnalysis: false,
+            runDiagnostics: false,
+            runTodoAnalysis: false,
+          ),
+        );
+        final report = auditor.run();
+        expect(report.deadClasses.map((c) => c.name),
+            isNot(contains('AppEnvironmentExtension')));
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }
